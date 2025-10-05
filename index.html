@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Pedidos Definitivo</title>
+    <!-- Librerías para generar PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #000000; --surface-color: #1a1a1a; --primary-btn-color: #F8BE01;
+            --secondary-btn-color: #B4454C; --text-color: #FFFFFF; --border-color: #333333;
+            --success-color: #4caf50;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: var(--bg-color); color: var(--text-color); font-size: 16px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+        button {
+            cursor: pointer; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; font-weight: bold;
+            transition: background-color 0.2s, transform 0.2s; color: var(--bg-color);
+        }
+        button:hover { transform: translateY(-2px); opacity: 0.9; }
+        .btn-primary { background-color: var(--primary-btn-color); }
+        .btn-secondary { background-color: var(--secondary-btn-color); color: var(--text-color); }
+        
+        header {
+            background-color: var(--bg-color); padding: 1rem; text-align: center;
+            border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 100;
+        }
+        .logo { width: 200px; height: auto; display: inline-block; }
+        .header-controls { display: flex; gap: 0.5rem; justify-content: center; margin-top: 1rem; }
+        
+        #main-view, #history-view, #admin-view { display: none; }
+        #main-view.active, #history-view.active, #admin-view.active { display: block; }
+        
+        .order-info {
+            background-color: var(--surface-color); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;
+            border: 1px solid var(--border-color);
+        }
+        .table-selector { display: flex; align-items: center; gap: 0.5rem; }
+        .table-selector button {
+            width: 44px; height: 44px; border-radius: 50%; font-size: 2rem; line-height: 1;
+            display: flex; align-items: center; justify-content: center; padding: 0;
+        }
+        #table-number { font-size: 1.5rem; font-weight: bold; }
+
+        .category-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 1rem; }
+        .category-buttons button {
+            background-color: var(--surface-color); padding: 0.75rem; border-radius: 8px; display: flex;
+            flex-direction: column; align-items: center; gap: 0.25rem; font-size: 0.9rem;
+            color: var(--text-color); border: 1px solid var(--border-color);
+        }
+        .category-buttons button:hover { border-color: var(--primary-btn-color); }
+        .category-buttons .icon { font-size: 2rem; line-height: 1; }
+        
+        .datetime-display { text-align: center; margin-bottom: 1rem; color: #aaa; font-size: 0.9rem; }
+
+        #current-order-list {
+            background-color: var(--surface-color); border-radius: 8px; padding: 1rem;
+            min-height: 100px; border: 1px solid var(--border-color);
+        }
+        .order-item {
+            display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .order-item:last-child { border-bottom: none; }
+        .item-details .price { font-size: 0.9rem; color: #aaa; }
+        .item-observation { font-style: italic; color: var(--primary-btn-color); font-size: 0.8rem; }
+        .takeaway-fee { font-size: 0.8rem; color: var(--success-color); font-style: italic; }
+        .item-actions { display: flex; align-items: center; gap: 0.5rem; }
+        .item-actions button { padding: 0.5rem; font-size: 0.8rem; line-height: 1; }
+        .domicilio-check { display: flex; align-items: center; gap: 0.25rem; font-size: 1.5rem; }
+        .domicilio-check input { width: 20px; height: 20px; }
+        
+        #finalize-order-btn {
+            position: fixed; bottom: 0; left: 0; right: 0; padding: 1.25rem; background-color: var(--primary-btn-color);
+            color: var(--bg-color); border: none; font-size: 1.25rem; font-weight: bold; border-radius: 0; z-index: 50;
+        }
+        
+        .modal {
+            display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%;
+            overflow: auto; background-color: rgba(0, 0, 0, 0.8);
+        }
+        .modal-content {
+            background-color: var(--surface-color); margin: 5% auto; padding: 20px; border-radius: 8px;
+            width: 90%; max-width: 500px; animation: slide-down 0.3s ease-out; border: 1px solid var(--primary-btn-color);
+        }
+        @keyframes slide-down { from { transform: translateY(-30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .modal-header { border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 1rem; }
+        .modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+        #modal-product-list .product-item {
+            padding: 0.75rem; border-bottom: 1px solid var(--border-color); cursor: pointer;
+            display: flex; justify-content: space-between;
+        }
+        #modal-product-list .product-item:hover { background-color: #2a2a2a; }
+        
+        .history-table { width: 100%; border-collapse: collapse; background-color: var(--surface-color); }
+        .history-table th, .history-table td { padding: 0.75rem; text-align: left; border: 1px solid var(--border-color); vertical-align: top;}
+        .history-table th { background-color: #252525; }
+        .history-table td .total-price { font-size: 0.9rem; white-space: nowrap; }
+        .order-actions { display: flex; gap: 0.25rem; margin-top: 0.5rem; }
+        .order-actions button { padding: 0.5rem; min-width: 35px; display: flex; align-items: center; justify-content: center; }
+        .whatsapp-icon { width: 18px; height: 18px; fill: white; }
+        .order-time { font-size: 0.8em; color: #aaa; margin-top: 4px; }
+        .history-controls { margin-top: 1rem; display: flex; gap: 1rem; }
+
+        .toggle-switch {
+            width: 120px; height: 34px; background: var(--secondary-btn-color);
+            border-radius: 17px; position: relative; cursor: pointer;
+            transition: background-color 0.3s ease;
+            display: flex; align-items: center; user-select: none;
+        }
+        .toggle-switch .knob {
+            width: 28px; height: 28px; background: white; border-radius: 50%;
+            position: absolute; top: 3px; left: 4px;
+            transition: transform 0.3s ease;
+        }
+        .toggle-switch .text {
+            font-size: 0.8rem; color: white; font-weight: bold;
+            position: absolute; line-height: 34px;
+        }
+        .toggle-switch[data-state="pendiente"] .text { left: 40px; }
+        .toggle-switch[data-state="finalizado"] { background: var(--success-color); }
+        .toggle-switch[data-state="finalizado"] .knob { transform: translateX(85px); }
+        .toggle-switch[data-state="finalizado"] .text { right: 15px; }
+
+        #admin-view .form-group { margin-bottom: 1.5rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 8px; }
+        #admin-view h3, #admin-view h4 { border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 1rem; }
+        #admin-view label { display: block; margin-bottom: 0.25rem; }
+        #admin-view input, #admin-view select {
+            width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 4px;
+            background-color: #333; color: var(--text-color); margin-bottom: 0.5rem;
+        }
+        #variant-editor .variant-item, .takeaway-fee-editor .fee-item { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
+        #data-management-buttons { display: flex; gap: 1rem; }
+
+        @media (max-width: 768px) { body { padding-bottom: 80px; } }
+    </style>
+</head>
+<body>
+
+    <header>
+        <svg version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+             viewBox="0 0 389.13 120.63" class="logo" xml:space="preserve">
+            <style type="text/css">.st0{fill:#F8BE01;}.st1{fill:#B4454C;}.st2{fill:#F3F4EE;}</style>
+            <g><g><g><g><path class="st0" d="M5.48,65.34l9.04-0.01l0.01,5.6L0.07,70.95L0.03,31.73l5.41-0.01L5.48,65.34z"/></g></g><g><g><path class="st0" d="M35.29,70.9l-5.51,0.01L28.6,62l-5.97,0.01l-1.16,8.91l-5.41,0.01l6.13-39.22l6.89-0.01L35.29,70.9z M25.51,40.1l-2.18,16.53l4.54-0.01L25.66,40.1L25.51,40.1z"/></g></g></g><g><rect x="0" y="74.64" transform="matrix(1 -1.171966e-03 1.171966e-03 1 -0.0906 0.0207)" class="st1" width="35.27" height="5.31"/></g><g><g><path class="st0" d="M70.68,37.28c3.21,3.55,4.82,8.69,4.83,15.41l0.01,6.57c0.01,6.72-1.59,11.86-4.79,15.42 c-3.2,3.56-7.86,5.34-13.99,5.35l-5.02,0.01l0.04,34l-11.32,0.01l-0.1-82.08l16.35-0.02C62.8,31.96,67.47,33.73,70.68,37.28z M51.67,43.46l0.03,25.09l4.59-0.01c2.71,0,4.7-0.83,5.98-2.47c1.28-1.64,1.92-4.18,1.91-7.62l-0.01-4.92 c0-3.44-0.65-5.98-1.93-7.62c-1.28-1.64-3.28-2.46-5.99-2.46L51.67,43.46z"/></g><g><path class="st0" d="M115.66,43.39l-20.51,0.02l0.03,23.22l16.56-0.02l0.01,11.49l-16.56,0.02l0.03,24.39l20.51-0.02l0.01,11.49 l-31.84,0.04l-0.1-82.08l31.84-0.04L115.66,43.39z"/></g><g><path class="st0" d="M150.89,113.93l-9.02-34.7l-5.23,0.01l0.04,34.71l-11.32,0.01l-0.1-82.08l16.35-0.02 c6.12-0.01,10.79,1.77,14,5.32c3.21,3.55,4.82,8.69,4.83,15.41l0.01,5.86c0.01,8.68-2.65,14.7-7.99,18.07l10.41,37.39 L150.89,113.93z M136.6,43.36l0.03,24.39l4.59-0.01c2.71,0,4.7-0.83,5.98-2.47c1.28-1.64,1.92-4.18,1.91-7.62l0-4.22 c0-3.44-0.65-5.98-1.93-7.62c-1.28-1.64-3.28-2.46-5.99-2.45L136.6,43.36z"/></g><g><path class="st0" d="M196.62,113.88l-9.02-34.7l-5.23,0.01l0.04,34.71l-11.32,0.01l-0.1-82.08l16.35-0.02 c6.12-0.01,10.79,1.77,14,5.32c3.21,3.55,4.82,8.69,4.83,15.41l0.01,5.86c0.01,8.68-2.65,14.7-7.99,18.07l10.41,37.39 L196.62,113.88z M182.32,43.31l0.03,24.39l4.59-0.01c2.71,0,4.7-0.83,5.98-2.47c1.28-1.64,1.92-4.18,1.91-7.62l0-4.22 c0-3.44-0.65-5.98-1.93-7.62c-1.28-1.64-3.28-2.46-5.99-2.46L182.32,43.31z"/></g><g><path class="st0" d="M248.56,43.23l-20.51,0.02l0.03,23.22l16.56-0.02l0.01,11.49l-16.56,0.02l0.03,24.39l20.51-0.02l0.01,11.49 l-31.84,0.04l-0.1-82.08l31.84-0.04L248.56,43.23z"/></g><g><path class="st0" d="M283.79,113.77l-9.01-34.7l-5.24,0.01l0.04,34.71l-11.32,0.01l-0.1-82.08l16.35-0.02 c6.12-0.01,10.79,1.77,14,5.32c3.21,3.55,4.82,8.69,4.83,15.41l0.01,5.86c0.01,8.68-2.65,14.7-7.99,18.07l10.41,37.39 L283.79,113.77z M269.5,43.21l0.03,24.39l4.59-0.01c2.71,0,4.7-0.83,5.98-2.47c1.28-1.64,1.92-4.18,1.91-7.62l-0.01-4.22 c0-3.44-0.65-5.98-1.93-7.62c-1.28-1.64-3.28-2.46-5.99-2.46L269.5,43.21z"/></g><g><path class="st0" d="M389.13,113.65l-11.54,0.01l-2.48-18.64l-12.5,0.01l-2.44,18.65l-11.32,0.01l12.83-82.09l14.42-0.02 L389.13,113.65z M368.64,49.19l-4.55,34.59l9.51-0.01l-4.63-34.58L368.64,49.19z"/></g></g><g><path class="st0" d="M333.9,113.59l4.88-0.01c4.13,0,7.47-3.36,7.47-7.49l-0.08-67.2c0-4.13-3.36-7.47-7.49-7.47l-4.88,0.01 L333.9,113.59z"/></g><g><path class="st0" d="M311.77,113.62l-4.72,0.01c-4.09,0-7.41-3.31-7.42-7.4l-0.08-67.33c0-4.09,3.31-7.41,7.4-7.42l4.72-0.01 L311.77,113.62z"/></g><g><path class="st1" d="M322.79,120.63L322.79,120.63c4.1,0,7.42-3.33,7.42-7.43l-0.1-81.83c0-4.1-3.33-7.42-7.43-7.42h0 c-4.1,0-7.42,3.33-7.42,7.43l0.1,81.83C315.36,117.31,318.69,120.63,322.79,120.63z"/></g><path class="st2" d="M323.43,102.14c1.85-2.17,2.69-4.43,2.48-6.72c-0.23-2.61-1.78-4.46-2.54-5.23c-2.67-3.92-0.28-6.96,0.03-7.33 c1.85-2.17,2.69-4.44,2.48-6.72c-0.23-2.61-1.78-4.47-2.54-5.23c-2.67-3.92-0.28-6.96,0.03-7.32c1.85-2.17,2.69-4.43,2.48-6.72 c-0.23-2.61-1.78-4.46-2.54-5.23c-2.68-3.92-0.29-6.96,0.03-7.33c1.85-2.17,2.69-4.43,2.48-6.72c-0.3-3.4-2.84-5.52-2.95-5.61 c-0.55-0.45-1.35-0.37-1.8,0.17c-0.45,0.54-0.38,1.35,0.16,1.8c0.02,0.02,1.84,1.57,2.03,3.89c0.13,1.57-0.5,3.18-1.87,4.79 c-1.46,1.67-3.16,5.66-0.52,9.98c0.07,0.23,0.19,0.45,0.39,0.62c0,0,0.03,0.03,0.07,0.07c0.27,0.38,0.56,0.76,0.91,1.14 c0.03,0.03,0.06,0.04,0.09,0.06c0.44,0.66,0.86,1.54,0.96,2.59c0.14,1.57-0.49,3.2-1.87,4.82c-1.46,1.67-3.16,5.66-0.51,9.99 c0.07,0.23,0.18,0.44,0.38,0.6c0,0,0.03,0.03,0.08,0.07c0.27,0.38,0.56,0.76,0.91,1.14c0.03,0.03,0.06,0.04,0.09,0.07 c0.44,0.67,0.87,1.55,0.96,2.61c0.13,1.57-0.5,3.18-1.87,4.79c-1.46,1.67-3.16,5.66-0.52,9.98c0.07,0.23,0.19,0.45,0.39,0.62 c0,0,0.03,0.03,0.07,0.07c0.27,0.38,0.56,0.76,0.91,1.14c0.03,0.03,0.06,0.04,0.09,0.06c0.44,0.66,0.86,1.54,0.96,2.59 c0.14,1.57-0.49,3.2-1.87,4.82c-1.67,1.9-3.64,6.82,0.85,11.8c0.25,0.28,0.6,0.42,0.95,0.42c0.31,0,0.61-0.11,0.86-0.33 c0.53-0.47,0.57-1.28,0.1-1.81C320.26,106.12,323.09,102.54,323.43,102.14z"/><g><g><path class="st2" d="M329.8,0c1.14,1.49,1.51,3.08,1.08,4.83c-0.43,1.77-1.45,3.19-2.67,4.47c-0.95,0.99-1.96,1.93-2.91,2.92 c-1.74,1.8-2.44,4.02-2.47,6.48c0,0.32-0.02,0.64-0.03,1.06c-1.02-1.61-1.41-3.25-1.13-5.03c0.37-2.33,1.59-4.21,3.24-5.83 c0.87-0.86,1.8-1.66,2.7-2.49c1.68-1.56,2.46-3.46,2.21-5.75c-0.02-0.16-0.02-0.33-0.03-0.49C329.78,0.14,329.78,0.12,329.8,0z"/></g><g><path class="st2" d="M326.1,20.06c-0.63-1.05-0.85-2.09-0.71-3.2c0.21-1.66,1.08-2.98,2.25-4.12c0.59-0.58,1.24-1.11,1.88-1.63 c1.38-1.13,2.12-2.53,1.95-4.35c-0.01-0.06,0.02-0.12,0.04-0.28c0.61,0.86,0.85,1.72,0.74,2.67c-0.16,1.38-0.89,2.47-1.82,3.44 c-0.58,0.61-1.21,1.18-1.85,1.73c-1.6,1.39-2.4,3.13-2.45,5.24C326.14,19.7,326.12,19.83,326.1,20.06z"/></g><g><path class="st2" d="M320.18,14.23c-0.78-1.35-0.95-2.69-0.53-4.09c0.48-1.58,1.48-2.8,2.72-3.85c0.61-0.52,1.23-1.04,1.81-1.58 c0.98-0.92,1.43-2.07,1.38-3.41c-0.01-0.2,0-0.4,0-0.61c0-0.01,0.02-0.02,0.05-0.04c0.9,1.3,0.96,2.65,0.33,4.06 c-0.64,1.44-1.79,2.44-2.93,3.47c-0.83,0.75-1.63,1.53-2.13,2.56c-0.46,0.94-0.6,1.94-0.67,2.97 C320.21,13.85,320.2,13.99,320.18,14.23z"/></g></g>
+            </g>
+        </svg>
+
+        <div class="header-controls">
+            <button id="show-main-btn" class="btn-primary">Pedido Actual</button>
+            <button id="show-history-btn" class="btn-primary">Historial</button>
+            <button id="show-admin-btn" class="btn-secondary">Admin</button>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- VISTA PRINCIPAL -->
+        <section id="main-view" class="active">
+            <div class="order-info"><div class="order-info-details"><strong>Orden:</strong> <span id="order-number">0001</span></div><div class="table-selector"><button id="decrement-table" class="btn-secondary">-</button><span>Mesa <span id="table-number">1</span></span><button id="increment-table" class="btn-secondary">+</button></div></div>
+            <div class="category-buttons" id="category-buttons-container"></div>
+            <div class="datetime-display"><span id="order-datetime"></span></div>
+            <h3>Pedido Actual</h3>
+            <div id="current-order-list"><p id="empty-order-msg">Aún no se han añadido productos.</p></div>
+        </section>
+
+        <!-- VISTA DE HISTORIAL -->
+        <section id="history-view">
+            <h2>Historial de Pedidos del Día</h2>
+            <div class="history-table-container" style="overflow-x: auto;"><table class="history-table"><thead><tr><th>Pedido</th><th>Mesa</th><th>Total</th><th>Estado</th></tr></thead><tbody id="history-table-body"></tbody></table></div>
+            <div class="history-controls"><button id="clear-history-btn" class="btn-secondary">Limpiar Historial</button><button id="download-pdf-btn" class="btn-primary">Descargar PDF</button></div>
+        </section>
+        
+        <!-- VISTA DE ADMINISTRACIÓN -->
+        <section id="admin-view">
+            <h2>Gestión de Datos y Orden</h2>
+            <div class="form-group" id="data-management-buttons"><button id="export-data-btn" class="btn-primary">Exportar Datos</button><button id="import-data-btn" class="btn-secondary">Importar Datos</button><input type="file" id="import-file-input" accept=".json" style="display: none;"></div>
+            <div class="form-group"><h3>Gestionar Número de Orden</h3><label for="set-order-number-input">Establecer Próximo N° de Orden:</label><input type="number" id="set-order-number-input" min="1"><button id="save-order-number-btn" class="btn-primary" style="margin-top: 0.5rem;">Guardar N° de Orden</button></div>
+            <h2>Administración del Menú</h2>
+            <div class="form-group"><h3>Editar Precios de Envase (Para Llevar)</h3><div id="takeaway-fee-editor"></div><button id="save-takeaway-fees-btn" class="btn-primary" style="margin-top: 1rem;">Guardar Precios de Envase</button></div>
+            <div class="form-group"><h3>Editar Producto</h3><label>Seleccionar Producto:</label><select id="edit-product-select"></select><div id="name-editor" style="margin-top: 1rem;"><h4>Editar Nombre</h4><input type="text" id="edit-product-name"><button id="save-name-btn" class="btn-primary">Guardar Nombre</button></div><hr style="margin: 1rem 0; border-color: var(--border-color);"><div id="price-editor-normal"><h4>Editar Precios</h4><label>Nuevo Precio (COP):</label><input type="number" id="edit-price-cop" placeholder="Ej: 15000"><label>Nuevo Precio (USD):</label><input type="number" id="edit-price-usd" step="0.01" placeholder="Ej: 4.00"><button id="save-price-btn" class="btn-primary" style="margin-top: 0.5rem;">Guardar Precio</button></div><div id="variant-editor" style="display:none;"><h4>Editar Variantes</h4><div id="variant-list"></div><h5>Añadir Nueva Variante</h5><div class="variant-item"><input type="text" id="add-variant-name" placeholder="Nombre (ej. Personal)"><input type="number" id="add-variant-cop" placeholder="Precio COP"><input type="number" id="add-variant-usd" placeholder="Precio USD" step="0.01"><button id="add-variant-btn" class="btn-primary" style="background-color: #4caf50;">+</button></div></div></div>
+            <div class="form-group"><h3>Añadir Producto</h3><label>Categoría:</label><select id="add-category-select"></select><label>Nombre del Producto:</label><input type="text" id="add-product-name" placeholder="Ej: Perro Suizo"><label>Precio (COP):</label><input type="number" id="add-price-cop" placeholder="Ej: 28000"><label>Precio (USD):</label><input type="number" id="add-price-usd" step="0.01" placeholder="Ej: 7.00"><button id="add-product-btn" class="btn-primary" style="margin-top: 0.5rem; background-color: #4caf50;">Añadir Producto</button></div>
+            <div class="form-group"><h3>Eliminar Producto</h3><select id="delete-product-select"></select><button id="delete-product-btn" class="btn-secondary" style="margin-top: 0.5rem;">Eliminar Producto</button></div>
+        </section>
+    </main>
+
+    <button id="finalize-order-btn">FINALIZAR ORDEN</button>
+    <div id="products-modal" class="modal"><div class="modal-content"><div class="modal-header"><h2 id="modal-category-title"></h2></div><div id="modal-product-list"></div><div class="modal-footer"><button id="modal-close-btn" class="btn-secondary">Cerrar</button></div></div></div>
+    <div id="order-details-modal" class="modal"><div class="modal-content"><div class="modal-header"><h2>Detalles del Pedido</h2></div><div id="order-details-content"></div><div class="modal-footer"><button id="download-invoice-btn" class="btn-primary">Descargar Factura</button><button id="details-modal-close-btn" class="btn-secondary">Cerrar</button></div></div></div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        let menu = {
+            perros: { icon: '🌭', takeawayFee: { cop: 1000, usd: 0.25 }, items: [ { name: "De la Calle", cop: 6000, usd: 1.50 }, { name: "Loco", cop: 14000, usd: 3.50 }, { name: "Ladra...Pica", cop: 0, usd: 0 }, { name: "Criollo Dog", cop: 20000, usd: 5.00 }, { name: "Granjero", cop: 24000, usd: 6.00 }, { name: "Chorreao", cop: 30000, usd: 7.50 }, { name: "Sifri Dog", cop: 32000, usd: 8.00 }, { name: "Boleta", cop: 34000, usd: 8.50 } ] },
+            papas: { icon: '🍟', takeawayFee: { cop: 500, usd: 0.125 }, items: [ { name: "Tocino y Queso", cop: 10000, usd: 2.50 }, { name: "Al pimiento", cop: 8000, usd: 2.00 }, { name: "Rústicas", cop: 6000, usd: 1.50 }, { name: "Papas Rellenas", cop: 8000, usd: 2.00 } ] },
+            salchipapa: { icon: '🥔', takeawayFee: { cop: 1000, usd: 0.25 }, items: [ { name: "Salchipapa Clasica", cop: 12000, usd: 3.00 } ] },
+            bebidas: { icon: '🥤', takeawayFee: { cop: 500, usd: 0.125 }, items: [ { name: "Agua Mineral", cop: 0, usd: 0 }, { name: "Refrescos", variants: [ { variant: "Personal", cop: 4000, usd: 1.00 }, { variant: "Dos", cop: 6000, usd: 1.50 }, { variant: "Litro y medio", cop: 8000, usd: 2.00 } ] }, { name: "Jugos Naturales", variants: [] }, { name: "Micheladas", cop: 16000, usd: 4.00 }, { name: "Cervezas", cop: 0, usd: 0 } ]}
+        };
+
+        let currentOrder = [], orderHistory = [], orderCounter = 1, tableNumber = 1;
+        const ADMIN_PASSWORD = "1234";
+        const getEl = id => document.getElementById(id);
+        const queryAll = sel => document.querySelectorAll(sel);
+        const views = { main: getEl('main-view'), history: getEl('history-view'), admin: getEl('admin-view') };
+        const buttons = { showMain: getEl('show-main-btn'), showHistory: getEl('show-history-btn'), showAdmin: getEl('show-admin-btn') };
+        const orderInfo = { number: getEl('order-number'), datetime: getEl('order-datetime'), table: getEl('table-number') };
+        const categoryContainer = getEl('category-buttons-container'), currentOrderList = getEl('current-order-list'), emptyOrderMsg = getEl('empty-order-msg');
+        const finalizeBtn = getEl('finalize-order-btn'), productsModal = getEl('products-modal'), modalTitle = getEl('modal-category-title');
+        const modalProductList = getEl('modal-product-list'), modalCloseBtn = getEl('modal-close-btn'), historyTableBody = getEl('history-table-body');
+        const clearHistoryBtn = getEl('clear-history-btn'), downloadPdfBtn = getEl('download-pdf-btn'), detailsModal = getEl('order-details-modal');
+        const detailsContent = getEl('order-details-content'), detailsModalCloseBtn = getEl('details-modal-close-btn'), downloadInvoiceBtn = getEl('download-invoice-btn');
+        // Admin Elements
+        const saveOrderNumberBtn = getEl('save-order-number-btn');
+        const editProductSelect = getEl('edit-product-select'), editProductName = getEl('edit-product-name'), saveNameBtn = getEl('save-name-btn');
+        const editPriceCop = getEl('edit-price-cop'), editPriceUsd = getEl('edit-price-usd'), savePriceBtn = getEl('save-price-btn');
+        const addCategorySelect = getEl('add-category-select'), addProductName = getEl('add-product-name'), addPriceCop = getEl('add-price-cop');
+        const addPriceUsd = getEl('add-price-usd'), addProductBtn = getEl('add-product-btn'), deleteProductSelect = getEl('delete-product-select');
+        const deleteProductBtn = getEl('delete-product-btn'), priceEditorNormal = getEl('price-editor-normal'), variantEditor = getEl('variant-editor');
+        const variantList = getEl('variant-list'), exportBtn = getEl('export-data-btn'), importBtn = getEl('import-data-btn'), importInput = getEl('import-file-input');
+        const takeawayFeeEditor = getEl('takeaway-fee-editor'), saveTakeawayFeesBtn = getEl('save-takeaway-fees-btn');
+
+        const switchView = viewName => { Object.values(views).forEach(v => v.classList.remove('active')); views[viewName].classList.add('active'); finalizeBtn.style.display = viewName === 'main' ? 'block' : 'none'; };
+        buttons.showMain.addEventListener('click', () => switchView('main')); buttons.showHistory.addEventListener('click', () => switchView('history'));
+        buttons.showAdmin.addEventListener('click', () => { if (checkPassword()) { switchView('admin'); populateAdminForms(); } });
+        const updateDateTime = () => { orderInfo.datetime.textContent = new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'medium' }); };
+        
+        const renderCategoryButtons = () => { categoryContainer.innerHTML = ''; for (const cat in menu) { const btn = document.createElement('button'); btn.dataset.category = cat; btn.innerHTML = `<span class="icon">${menu[cat].icon}</span><span>${cat.charAt(0).toUpperCase() + cat.slice(1)}</span>`; btn.addEventListener('click', () => showProductsModal(cat)); categoryContainer.appendChild(btn); } };
+        getEl('increment-table').addEventListener('click', () => { if (tableNumber < 5) tableNumber++; orderInfo.table.textContent = tableNumber; });
+        getEl('decrement-table').addEventListener('click', () => { if (tableNumber > 1) tableNumber--; orderInfo.table.textContent = tableNumber; });
+        
+        const renderCurrentOrder = () => {
+            currentOrderList.innerHTML = '';
+            if (currentOrder.length === 0) { currentOrderList.appendChild(emptyOrderMsg); emptyOrderMsg.style.display = 'block'; return; }
+            emptyOrderMsg.style.display = 'none';
+            currentOrder.forEach((item, index) => {
+                let feeHtml = '';
+                if (item.domicilio) {
+                    const fee = menu[item.category].takeawayFee;
+                    feeHtml = `<div class="takeaway-fee">+ COP ${fee.cop.toLocaleString()} / $${fee.usd.toFixed(2)} (Envase)</div>`;
+                }
+                const el = document.createElement('div'); el.className = 'order-item';
+                el.innerHTML = `<div class="item-details"><strong>${item.name}</strong><div class="price">COP ${item.cop.toLocaleString()} / USD $${item.usd.toFixed(2)}</div>${feeHtml}${item.observation ? `<div class="item-observation">Obs: ${item.observation}</div>` : ''}</div><div class="item-actions"><label class="domicilio-check"><input type="checkbox" class="domicilio-checkbox" data-index="${index}" ${item.domicilio ? 'checked' : ''}><span>🥡</span></label><button class="btn-primary add-observation-btn" data-index="${index}">Obs.</button><button class="btn-secondary remove-item-btn" data-index="${index}">X</button></div>`;
+                currentOrderList.appendChild(el);
+            });
+            queryAll('.remove-item-btn').forEach(b => b.addEventListener('click', (e) => removeItem(e.target.dataset.index)));
+            queryAll('.add-observation-btn').forEach(b => b.addEventListener('click', (e) => addObservation(e.target.dataset.index)));
+            queryAll('.domicilio-checkbox').forEach(cb => cb.addEventListener('change', (e) => toggleDomicilio(e.target.dataset.index, e.target.checked)));
+        };
+
+        const calculateOrderTotal = orderItems => {
+            return orderItems.reduce((acc, item) => {
+                let itemCop = item.cop; let itemUsd = item.usd;
+                if (item.domicilio && item.category && menu[item.category]) {
+                    const fee = menu[item.category].takeawayFee;
+                    itemCop += fee.cop; itemUsd += fee.usd;
+                }
+                return { cop: acc.cop + itemCop, usd: acc.usd + itemUsd };
+            }, { cop: 0, usd: 0 });
+        };
+        
+        const addItemToOrder = (product, category) => { currentOrder.push({ ...product, category, id: Date.now(), observation: '', domicilio: false }); renderCurrentOrder(); };
+        const removeItem = index => { currentOrder.splice(index, 1); renderCurrentOrder(); };
+        const addObservation = index => { const obs = prompt('Añadir observación:', currentOrder[index].observation || ''); if (obs !== null) { currentOrder[index].observation = obs; renderCurrentOrder(); } };
+        const toggleDomicilio = (index, isChecked) => { currentOrder[index].domicilio = isChecked; renderCurrentOrder(); };
+        
+        const showProductsModal = category => {
+            modalTitle.textContent = category.charAt(0).toUpperCase() + category.slice(1); modalProductList.innerHTML = '';
+            menu[category].items.forEach(product => {
+                const el = document.createElement('div'); el.className = 'product-item';
+                if (product.variants && product.variants.length > 0) { el.innerHTML = `<span>${product.name}</span><span>▶</span>`; el.addEventListener('click', () => showVariantModal(category, product)); } 
+                else if (product.variants) { el.innerHTML = `<span>${product.name}</span><span style="font-size: 0.8em; color: #888;">(Sin opciones)</span>`; el.style.cursor = 'not-allowed'; } 
+                else { el.innerHTML = `<span>${product.name}</span><span>COP ${product.cop.toLocaleString()}</span>`; el.addEventListener('click', () => { addItemToOrder(product, category); productsModal.style.display = 'none'; }); }
+                modalProductList.appendChild(el);
+            });
+            productsModal.style.display = 'block';
+        };
+
+        const showVariantModal = (category, product) => {
+            modalTitle.textContent = `${category} - ${product.name}`; modalProductList.innerHTML = '';
+            product.variants.forEach(variant => {
+                const el = document.createElement('div'); el.className = 'product-item';
+                el.innerHTML = `<span>${variant.variant}</span><span>COP ${variant.cop.toLocaleString()}</span>`;
+                el.addEventListener('click', () => { const item = { name: `${product.name} (${variant.variant})`, cop: variant.cop, usd: variant.usd }; addItemToOrder(item, category); productsModal.style.display = 'none'; });
+                modalProductList.appendChild(el);
+            });
+        };
+        
+        modalCloseBtn.addEventListener('click', () => productsModal.style.display = 'none');
+        window.addEventListener('click', e => { if (e.target == productsModal || e.target == detailsModal) { productsModal.style.display = 'none'; detailsModal.style.display = 'none'; } });
+        const resetOrder = () => { currentOrder = []; tableNumber = 1; orderInfo.table.textContent = 1; orderCounter++; orderInfo.number.textContent = orderCounter.toString().padStart(4, '0'); renderCurrentOrder(); };
+        
+        finalizeBtn.addEventListener('click', () => { if (currentOrder.length === 0) return alert('No hay productos.'); if (confirm('¿Finalizar orden?')) { const now = new Date(); const total = calculateOrderTotal(currentOrder); orderHistory.unshift({ number: orderCounter, datetime: now, table: tableNumber, items: [...currentOrder], total, isOut: false }); renderHistory(); resetOrder(); alert('¡Orden finalizada!'); } });
+        
+        const renderHistory = () => {
+            historyTableBody.innerHTML = '';
+            orderHistory.forEach((order, index) => {
+                const row = document.createElement('tr');
+                const state = order.isOut ? 'finalizado' : 'pendiente';
+                const stateText = order.isOut ? 'Finalizado' : 'Por Entregar';
+                row.innerHTML = `
+                    <td>
+                        <div>${order.number.toString().padStart(4, '0')}</div>
+                        <div class="order-time">${order.datetime.toLocaleTimeString('es-CO')}</div>
+                        <div class="order-actions">
+                            <button class="btn-primary view-details-btn" data-index="${index}">Ver</button>
+                            <button class="btn-primary send-whatsapp-btn" data-index="${index}" style="background-color: #25D366;"><svg class="whatsapp-icon" viewBox="0 0 448 512"><path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zM223.9 439.6c-33.8 0-66.3-13.1-90.4-36.4L114.9 387l-24.2 6.3 6.5-23.5-3.7-2.1c-24.4-42.6-37.8-93.5-37.8-146.4 0-109.4 88.8-198.2 198.2-198.2 54.7 0 106.1 21.3 145.4 58.7 39.4 37.4 61.4 89.2 61.4 143.2 0 109.4-88.8 198.2-198.2 198.2zM332.8 290c-5.2-2.6-30.8-15.2-35.6-16.9-4.8-1.7-8.3-2.6-11.8 2.6-3.5 5.2-13.5 16.9-16.5 20.4-3.1 3.5-6.1 3.9-11.3 1.3-5.2-2.6-22-8.1-41.9-25.8-15.5-14-26-31.3-29.1-36.5-3.1-5.2-.3-8.1 2.4-10.7 2.3-2.3 5.2-6.1 7.8-9.1 2.6-3.1 3.5-5.2 5.2-8.6 1.7-3.5.8-6.5-1.7-9.1-2.6-2.6-11.8-28.5-16.1-39-4.3-10.5-8.6-9.1-11.8-9.1-3.1 0-6.8-.4-10.3-.4-3.5 0-9.1 1.3-13.8 6.5-4.8 5.2-18.4 17.9-18.4 43.5 0 25.6 18.9 50.4 21.5 53.9 2.6 3.5 37.2 56.4 90.4 79.4 12.6 5.4 22.9 8.6 30.5 11.2 11.4 3.9 21.8 3.3 29.9 2 8.9-1.3 28.5-11.7 32.5-22.9 4-11.2 4-20.8 2.8-22.9-1.2-2.1-4.7-3.4-9.9-6z"/></svg></button>
+                            <button class="btn-secondary delete-order-btn" data-index="${index}">X</button>
+                        </div>
+                    </td>
+                    <td>${order.table}</td>
+                    <td><div class="total-price">COP ${order.total.cop.toLocaleString()}</div><div class="total-price">USD $${order.total.usd.toFixed(2)}</div></td>
+                    <td><div class="toggle-switch" data-index="${index}" data-state="${state}"><span class="knob"></span><span class="text">${stateText}</span></div></td>`;
+                historyTableBody.appendChild(row);
+            });
+            queryAll('.view-details-btn, .send-whatsapp-btn, .delete-order-btn, .toggle-switch').forEach(b => b.addEventListener('click', e => {
+                const target = e.target.closest('[data-index]');
+                const idx = target.dataset.index;
+                if (target.classList.contains('view-details-btn')) showOrderDetails(idx);
+                if (target.classList.contains('send-whatsapp-btn')) sendWhatsApp(idx);
+                if (target.classList.contains('delete-order-btn')) deleteOrder(idx);
+                if (target.classList.contains('toggle-switch')) toggleOrderOut(idx);
+            }));
+        };
+        const showOrderDetails = index => { const order = orderHistory[index]; const total = calculateOrderTotal(order.items); detailsContent.innerHTML = `<p><strong>Pedido:</strong> ${order.number}</p><p><strong>Hora:</strong> ${order.datetime.toLocaleString('es-CO')}</p><p><strong>Mesa:</strong> ${order.table}</p><hr><h4>Productos:</h4><ul>${order.items.map(i => `<li><strong>${i.name}</strong>${i.domicilio ? ' (Para llevar)' : ''}${i.observation ? `<br><em>Obs: ${i.observation}</em>` : ''}</li>`).join('')}</ul><hr><p><strong>Total: COP ${total.cop.toLocaleString()} / USD $${total.usd.toFixed(2)}</strong></p>`; detailsModal.style.display = 'block'; downloadInvoiceBtn.dataset.index = index; };
+        detailsModalCloseBtn.addEventListener('click', () => detailsModal.style.display = 'none');
+        const toggleOrderOut = index => { orderHistory[index].isOut = !orderHistory[index].isOut; renderHistory(); };
+        const deleteOrder = index => { if (checkPassword()) { if(confirm('¿Eliminar este pedido?')) { orderHistory.splice(index, 1); renderHistory(); } } };
+
+        const sendWhatsApp = index => { const order = orderHistory[index]; let msg = `*NUEVO PEDIDO: ${order.number}*\nMesa: ${order.table}\n\n----------------------------\n`; order.items.forEach(i => { msg += `*• ${i.name.toUpperCase()}*\n`; if (i.observation) msg += `  *OBS:* ${i.observation}\n`; if (i.domicilio) msg += `  *‼️ PARA LLEVAR ‼️*\n`; msg += `\n`; }); const phone = "584143500422"; window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank'); };
+        
+        clearHistoryBtn.addEventListener('click', () => { if(checkPassword()) { if(confirm('¿Borrar historial del día?')) { orderHistory = []; renderHistory(); } } });
+        
+        downloadPdfBtn.addEventListener('click', () => {
+            if (orderHistory.length === 0) return alert('El historial está vacío.');
+            const { jsPDF } = window.jspdf; const doc = new jsPDF();
+            const gray = c => [c, c, c];
+            const headStyles = { fillColor: gray(220), textColor: gray(30), lineColor: gray(150), lineWidth: 0.1 };
+            const bodyStyles = { textColor: gray(50), lineColor: gray(200), lineWidth: 0.1 };
+
+            doc.setTextColor(...gray(30));
+            doc.text("Historial de Pedidos del día LA PERRERÍA", 14, 16);
+            
+            const orderRows = orderHistory.map(o => { const timeAndDate = `${o.datetime.toLocaleTimeString('es-CO')}\n${o.datetime.toLocaleDateString('es-CO')}`; const details = o.items.map(i => `${i.name}${i.domicilio ? ` (+ Envase)`:''} (COP ${i.cop.toLocaleString()})`).join('\n'); const total = `COP ${o.total.cop.toLocaleString()}\nUSD $${o.total.usd.toFixed(2)}`; return [o.number, timeAndDate, o.table, details, total]; });
+            doc.autoTable({ head: [["N° Pedido", "Hora / Fecha", "Mesa", "Detalles", "Total (COP/USD)"]], body: orderRows, startY: 20, headStyles, styles: bodyStyles });
+            let finalY = doc.lastAutoTable.finalY || 20;
+            
+            const salesSummary = {};
+            orderHistory.forEach(o => o.items.forEach(i => { salesSummary[i.name] = (salesSummary[i.name] || 0) + 1; }));
+            const summaryRows = Object.entries(salesSummary).map(([name, qty]) => [name, qty]);
+            doc.autoTable({ head: [["Producto Vendido", "Cantidad"]], body: summaryRows, startY: finalY + 10, pageBreak: 'avoid', headStyles, styles: bodyStyles });
+            finalY = doc.lastAutoTable.finalY;
+
+            const takeawaySummary = {};
+            for (const cat in menu) { takeawaySummary[cat] = { count: 0, totalCop: 0, totalUsd: 0 }; }
+            orderHistory.forEach(o => o.items.forEach(i => { if (i.domicilio && i.category && menu[i.category]) { const fee = menu[i.category].takeawayFee; takeawaySummary[i.category].count++; takeawaySummary[i.category].totalCop += fee.cop; takeawaySummary[i.category].totalUsd += fee.usd; } }));
+            const summaryTakeawayRows = Object.entries(takeawaySummary).filter(([_, data]) => data.count > 0).map(([cat, data]) => { const totalText = `COP ${data.totalCop.toLocaleString()}\nUSD $${data.totalUsd.toFixed(2)}`; return [cat.charAt(0).toUpperCase() + cat.slice(1), data.count, totalText]; });
+            if(summaryTakeawayRows.length > 0) {
+                doc.autoTable({ head: [["Categoría", "Envases Usados", "Total Envases (COP/USD)"]], body: summaryTakeawayRows, startY: finalY + 10, pageBreak: 'avoid', headStyles, styles: bodyStyles });
+                finalY = doc.lastAutoTable.finalY;
+            }
+
+            const grandTotalCop = orderHistory.reduce((s, o) => s + o.total.cop, 0);
+            const grandTotalUsd = orderHistory.reduce((s, o) => s + o.total.usd, 0);
+            doc.setFontSize(14);
+            doc.setTextColor(...gray(30));
+            doc.text(`Total General: COP ${grandTotalCop.toLocaleString()} / USD $${grandTotalUsd.toFixed(2)}`, 14, finalY + 15);
+            doc.save(`historial_${new Date().toISOString().slice(0,10)}.pdf`);
+        });
+        
+        const generateInvoicePdf = orderIndex => {
+            const order = orderHistory[orderIndex];
+            if (!order) return;
+            const { jsPDF } = window.jspdf; const doc = new jsPDF();
+            
+            doc.setFontSize(22); doc.text("LA PERRERÍA", 105, 20, { align: 'center' });
+            doc.setFontSize(14); doc.text("Detalle de Consumo", 105, 28, { align: 'center' });
+            
+            doc.setFontSize(10);
+            doc.text(`Pedido N°: ${order.number}`, 14, 40);
+            doc.text(`Fecha: ${order.datetime.toLocaleString('es-CO')}`, 14, 45);
+            doc.text(`Mesa: ${order.table}`, 14, 50);
+            doc.line(14, 55, 196, 55);
+
+            const tableRows = [];
+            order.items.forEach(item => {
+                tableRows.push(['1', item.name, `COP ${item.cop.toLocaleString()}`, `COP ${item.cop.toLocaleString()}`]);
+                if (item.domicilio && item.category && menu[item.category]) {
+                    const fee = menu[item.category].takeawayFee;
+                    tableRows.push(['', '  + Cargo Envase', `COP ${fee.cop.toLocaleString()}`, `COP ${fee.cop.toLocaleString()}`]);
+                }
+            });
+            doc.autoTable({ head: [['Cant.', 'Descripción', 'Precio Unit.', 'Total']], body: tableRows, startY: 60, headStyles: { fillColor: [50, 50, 50] }, styles: { fontSize: 9 } });
+
+            let finalY = doc.lastAutoTable.finalY + 15;
+            const rightAlign = doc.internal.pageSize.width - 14;
+            const total = calculateOrderTotal(order.items);
+            
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`TOTAL:`, rightAlign, finalY, { align: 'right' });
+            finalY += 7;
+            doc.text(`COP ${total.cop.toLocaleString()}`, rightAlign, finalY, { align: 'right' });
+            finalY += 7;
+            doc.text(`USD $${total.usd.toFixed(2)}`, rightAlign, finalY, { align: 'right' });
+
+            finalY += 15;
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'italic');
+            doc.text("¡Gracias por su visita!", 105, finalY, { align: 'center' });
+
+            doc.save(`factura_pedido_${order.number}.pdf`);
+        };
+        downloadInvoiceBtn.addEventListener('click', e => { const index = e.target.dataset.index; if (index) generateInvoicePdf(index); });
+
+        const checkPassword = () => { const pass = prompt("Contraseña de administrador:"); if (pass !== ADMIN_PASSWORD) { alert("Contraseña incorrecta."); return false; } return true; };
+        
+        // Admin Logic
+        const populateAdminForms = () => {
+            getEl('set-order-number-input').value = orderCounter;
+            editProductSelect.innerHTML = ''; addCategorySelect.innerHTML = ''; deleteProductSelect.innerHTML = ''; takeawayFeeEditor.innerHTML = '';
+            for (const cat in menu) {
+                const catOpt = document.createElement('option'); catOpt.value = cat; catOpt.textContent = cat.charAt(0).toUpperCase() + cat.slice(1); addCategorySelect.appendChild(catOpt);
+                const fee = menu[cat].takeawayFee;
+                const feeEl = document.createElement('div'); feeEl.className = 'fee-item';
+                feeEl.innerHTML = `<label style="flex-basis: 100px;">${cat.charAt(0).toUpperCase() + cat.slice(1)}:</label><input type="number" data-cat="${cat}" data-currency="cop" value="${fee.cop}" placeholder="COP"><input type="number" data-cat="${cat}" data-currency="usd" value="${fee.usd}" placeholder="USD" step="0.01">`;
+                takeawayFeeEditor.appendChild(feeEl);
+                menu[cat].items.forEach((item, index) => {
+                    const itemOpt = document.createElement('option'); itemOpt.value = `${cat},${index}`; itemOpt.textContent = `[${cat}] ${item.name}`;
+                    editProductSelect.appendChild(itemOpt.cloneNode(true)); deleteProductSelect.appendChild(itemOpt);
+                });
+            }
+            handleProductSelectionChange();
+        };
+
+        const handleProductSelectionChange = () => { const [cat, index] = editProductSelect.value.split(','); const product = menu[cat]?.items[index]; if (!product) return; editProductName.value = product.name; if (product.variants) { priceEditorNormal.style.display = 'none'; variantEditor.style.display = 'block'; renderVariantEditor(cat, index); } else { priceEditorNormal.style.display = 'block'; variantEditor.style.display = 'none'; } };
+        editProductSelect.addEventListener('change', handleProductSelectionChange);
+        saveOrderNumberBtn.addEventListener('click', () => { if (!checkPassword()) return; const newOrderNum = parseInt(getEl('set-order-number-input').value); if (!isNaN(newOrderNum) && newOrderNum > 0) { orderCounter = newOrderNum; orderInfo.number.textContent = orderCounter.toString().padStart(4, '0'); alert(`Próximo número de orden establecido en ${orderCounter}.`); } else { alert('Por favor, ingrese un número válido.'); } });
+        saveNameBtn.addEventListener('click', () => { if (!checkPassword()) return; const [cat, index] = editProductSelect.value.split(','); const newName = editProductName.value.trim(); if (newName) { menu[cat].items[index].name = newName; alert('Nombre actualizado.'); populateAdminForms(); renderCategoryButtons(); } else { alert('El nombre no puede estar vacío.'); } });
+        const renderVariantEditor = (cat, prodIndex) => { variantList.innerHTML = ''; const product = menu[cat].items[prodIndex]; product.variants.forEach((v, vIndex) => { const el = document.createElement('div'); el.className = 'variant-item'; el.innerHTML = `<span>${v.variant}</span><span>COP ${v.cop}</span><button class="btn-secondary delete-variant-btn" data-cat="${cat}" data-prod-index="${prodIndex}" data-variant-index="${vIndex}">X</button>`; variantList.appendChild(el); }); queryAll('.delete-variant-btn').forEach(b => b.addEventListener('click', e => deleteVariant(e.target.dataset))); };
+        getEl('add-variant-btn').addEventListener('click', () => { const [cat, prodIndex] = editProductSelect.value.split(','); const name = getEl('add-variant-name').value.trim(), cop = parseFloat(getEl('add-variant-cop').value), usd = parseFloat(getEl('add-variant-usd').value); if (name && !isNaN(cop) && !isNaN(usd)) { menu[cat].items[prodIndex].variants.push({ variant: name, cop, usd }); renderVariantEditor(cat, prodIndex); getEl('add-variant-name').value = ''; getEl('add-variant-cop').value = ''; getEl('add-variant-usd').value = ''; } });
+        const deleteVariant = ({ cat, prodIndex, variantIndex }) => { if (confirm('¿Eliminar variante?')) { menu[cat].items[prodIndex].variants.splice(variantIndex, 1); renderVariantEditor(cat, prodIndex); } };
+        savePriceBtn.addEventListener('click', () => { if (checkPassword()) { const [cat, index] = editProductSelect.value.split(','); const newCop = parseFloat(editPriceCop.value), newUsd = parseFloat(editPriceUsd.value); if (!isNaN(newCop) && !isNaN(newUsd)) { menu[cat].items[index].cop = newCop; menu[cat].items[index].usd = newUsd; alert('Precio actualizado.'); editPriceCop.value = ''; editPriceUsd.value = ''; } else { alert('Precios inválidos.'); } } });
+        saveTakeawayFeesBtn.addEventListener('click', () => { if (!checkPassword()) return; queryAll('#takeaway-fee-editor input').forEach(input => { const { cat, currency } = input.dataset; menu[cat].takeawayFee[currency] = parseFloat(input.value); }); alert('Precios de envase actualizados.'); });
+        addProductBtn.addEventListener('click', () => { if(checkPassword()) { const cat = addCategorySelect.value, name = addProductName.value.trim(), cop = parseFloat(addPriceCop.value), usd = parseFloat(addPriceUsd.value); if (name && !isNaN(cop) && !isNaN(usd)) { menu[cat].items.push({ name, cop, usd }); alert(`Producto '${name}' añadido.`); populateAdminForms(); renderCategoryButtons(); addProductName.value = ''; addPriceCop.value = ''; addPriceUsd.value = ''; } else { alert('Complete todos los campos.'); } } });
+        deleteProductBtn.addEventListener('click', () => { if (checkPassword()) { if (confirm('¿Eliminar producto?')) { const [cat, index] = deleteProductSelect.value.split(','); const name = menu[cat].items[index].name; menu[cat].items.splice(index, 1); alert(`Producto '${name}' eliminado.`); populateAdminForms(); renderCategoryButtons(); } } });
+        exportBtn.addEventListener('click', () => { const dataStr = JSON.stringify({ menu, orderHistory }); const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr); const link = document.createElement('a'); link.setAttribute('href', dataUri); link.setAttribute('download', 'datos_restaurante.json'); document.body.appendChild(link); link.click(); document.body.removeChild(link); });
+        importBtn.addEventListener('click', () => importInput.click());
+        importInput.addEventListener('change', e => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = event => { try { const data = JSON.parse(event.target.result); if (data.menu && data.orderHistory) { menu = data.menu; orderHistory = data.orderHistory; alert('Datos importados.'); init(true); } else { alert('JSON no válido.'); } } catch (err) { alert('Error al leer el archivo.'); } }; reader.readAsText(file); e.target.value = ''; });
+
+        const init = (isReload = false) => { updateDateTime(); if (!isReload) setInterval(updateDateTime, 1000); orderCounter = orderHistory.length > 0 ? Math.max(...orderHistory.map(o => o.number)) + 1 : 1; orderInfo.number.textContent = orderCounter.toString().padStart(4, '0'); renderCategoryButtons(); renderCurrentOrder(); renderHistory(); switchView('main'); };
+        init();
+    });
+    </script>
+
+</body>
+</html>
