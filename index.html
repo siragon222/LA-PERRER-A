@@ -249,16 +249,20 @@
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
+
         // --- BLOQUEO DE CLIC DERECHO Y TECLAS DE DESARROLLADOR ---
         document.addEventListener('contextmenu', event => event.preventDefault());
         document.addEventListener('keydown', event => {
             if (event.keyCode == 123) { // F12
                 event.preventDefault();
                 return false;
-            } else if (event.ctrlKey && event.shiftKey && (event.keyCode === 'I'.charCodeAt(0) || event.keyCode === 'J'.charCodeAt(0) || event.keyCode === 'C'.charCodeAt(0))) { // Ctrl+Shift+I, J, C
+            } else if (event.ctrlKey && event.shiftKey && event.keyCode == 'I'.charCodeAt(0)) { // Ctrl+Shift+I
                 event.preventDefault();
                 return false;
-            } else if (event.ctrlKey && event.keyCode === 'U'.charCodeAt(0)) { // Ctrl+U
+            } else if (event.ctrlKey && event.shiftKey && event.keyCode == 'J'.charCodeAt(0)) { // Ctrl+Shift+J
+                event.preventDefault();
+                return false;
+            } else if (event.ctrlKey && event.keyCode == 'U'.charCodeAt(0)) { // Ctrl+U
                 event.preventDefault();
                 return false;
             }
@@ -274,7 +278,6 @@
           appId: "1:45538078579:web:a81635bc5cb507fcc19f06",
           measurementId: "G-T84XMRCYC3"
         };
-
         const app = firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
         const docRef = db.collection("estado").doc("datos");
@@ -289,6 +292,7 @@
 
         // --- Producto con Lógica Especial de Empacado ---
         const SPECIAL_PRODUCT_NAME = "Perro de la Calle"; 
+        const LARGE_PACKAGE_PRICE_COP = 1500;
 
         // --- DOM Elements ---
         const getEl = id => document.getElementById(id);
@@ -396,28 +400,29 @@
             emptyOrderMsg.style.display = 'none';
             
             const deLaCalleCount = currentOrder.filter(item => item.name === SPECIAL_PRODUCT_NAME && item.domicilio).length;
-            const numPairs = Math.floor(deLaCalleCount / 2);
-            const numSingles = deLaCalleCount % 2;
-            let pairsFeeApplied = 0;
-            let singlesFeeApplied = 0;
+            const numLargePackages = Math.floor(deLaCalleCount / 2);
+            const numSmallPackages = deLaCalleCount % 2;
+
+            let largePackagesApplied = 0;
+            let smallPackagesApplied = 0;
 
             currentOrder.forEach((item, index) => {
                 let feeHtml = '';
                 const feeExempt = ['Refrescos', 'Agua Mineral', 'Cervezas'].includes(item.name.split(' (')[0]);
-
+                
                 if (item.domicilio && item.category && menu[item.category] && menu[item.category].takeawayFee && !feeExempt) {
-                    const fee = menu[item.category].takeawayFee;
                     if (item.name === SPECIAL_PRODUCT_NAME) {
-                        // This logic is purely visual for the current order screen
-                        if (pairsFeeApplied < numPairs) {
-                            feeHtml = `<div class="takeaway-fee">+ Envase (x2)</div>`;
-                            pairsFeeApplied++; 
-                        } else if (singlesFeeApplied < numSingles) {
-                            feeHtml = `<div class="takeaway-fee">+ Envase (x1)</div>`;
-                            singlesFeeApplied++;
+                        // Lógica visual para los paquetes del producto especial
+                        if (largePackagesApplied < numLargePackages) {
+                             feeHtml = `<div class="takeaway-fee">+ COP ${LARGE_PACKAGE_PRICE_COP.toLocaleString()} (Envase Grande)</div>`;
+                             largePackagesApplied++;
+                        } else if (smallPackagesApplied < numSmallPackages) {
+                            feeHtml = `<div class="takeaway-fee">+ COP ${menu.perros.takeawayFee.cop.toLocaleString()} (Envase Pequeño)</div>`;
+                            smallPackagesApplied++;
                         }
                     } else {
-                        feeHtml = `<div class="takeaway-fee">+ Envase</div>`;
+                        const fee = menu[item.category].takeawayFee;
+                        feeHtml = `<div class="takeaway-fee">+ COP ${fee.cop.toLocaleString()} (Envase)</div>`;
                     }
                 }
 
@@ -456,12 +461,15 @@
             });
             
             const deLaCalleCount = orderItems.filter(item => item.name === SPECIAL_PRODUCT_NAME && item.domicilio).length;
-            if (deLaCalleCount > 0) {
-                const numPairs = Math.floor(deLaCalleCount / 2);
-                const numSingles = deLaCalleCount % 2;
-                const specialFeeCop = (numPairs * 1500) + (numSingles * 1000);
-                totalCop += specialFeeCop;
-                totalUsd += specialFeeCop / exchangeRate;
+            if (deLaCalleCount > 0 && menu.perros && menu.perros.takeawayFee) {
+                const numLargePackages = Math.floor(deLaCalleCount / 2);
+                const numSmallPackages = deLaCalleCount % 2;
+                const smallFee = menu.perros.takeawayFee;
+                const largeFeeCop = LARGE_PACKAGE_PRICE_COP;
+                const largeFeeUsd = largeFeeCop / exchangeRate;
+
+                totalCop += (numLargePackages * largeFeeCop) + (numSmallPackages * smallFee.cop);
+                totalUsd += (numLargePackages * largeFeeUsd) + (numSmallPackages * smallFee.usd);
             }
 
             orderItems.forEach(item => {
@@ -707,9 +715,9 @@
             const orderRows = orderHistory.map(o => {
                 const timeAndDate = `${o.datetime.toLocaleTimeString('es-CO')}\n${o.datetime.toLocaleDateString('es-CO')}`;
                 
-                const deLaCalleTakeawayItems = o.items.filter(item => item.name === SPECIAL_PRODUCT_NAME && item.domicilio);
-                const deLaCalleFeeCount = deLaCalleTakeawayItems.length > 0 ? Math.ceil(deLaCalleTakeawayItems.length / 2) : 0;
-                let deLaCalleFeesApplied = 0;
+                const specialProductItems = o.items.filter(item => item.name === SPECIAL_PRODUCT_NAME && item.domicilio);
+                const specialProductCount = specialProductItems.length;
+                let specialProductsFeesApplied = 0;
 
                 let details = o.items.map(item => {
                     let descriptionParts = [`- ${item.name}`];
@@ -717,21 +725,26 @@
                         descriptionParts.push(...item.adicionales.map(ad => `  + ${ad.name} (COP ${ad.cop.toLocaleString()})`));
                     }
                     const feeExempt = ['Refrescos', 'Agua Mineral', 'Cervezas'].includes(item.name.split(' (')[0]);
+                    
                     if (item.domicilio && !feeExempt) {
-                        let fee = null;
                         if (item.name === SPECIAL_PRODUCT_NAME) {
-                             if (deLaCalleFeesApplied < deLaCalleFeeCount && menu.perros && menu.perros.takeawayFee) {
-                                fee = menu.perros.takeawayFee;
-                                deLaCalleFeesApplied++;
+                             if (specialProductsFeesApplied === 0 && specialProductCount > 0) { 
+                                const numLarge = Math.floor(specialProductCount / 2);
+                                const numSmall = specialProductCount % 2;
+                                if (numLarge > 0) {
+                                    descriptionParts.push(`  + ${numLarge}x Envase Grande (COP ${LARGE_PACKAGE_PRICE_COP.toLocaleString()})`);
+                                }
+                                if (numSmall > 0 && menu.perros.takeawayFee) {
+                                    descriptionParts.push(`  + ${numSmall}x Envase Pequeño (COP ${menu.perros.takeawayFee.cop.toLocaleString()})`);
+                                }
                             }
+                            specialProductsFeesApplied++;
                         } else if (item.category && menu[item.category] && menu[item.category].takeawayFee) {
-                            fee = menu[item.category].takeawayFee;
-                        }
-
-                        if (fee) {
+                            const fee = menu[item.category].takeawayFee;
                             descriptionParts.push(`  + Envase (COP ${fee.cop.toLocaleString()})`);
                         }
                     }
+
                     if (item.observation) {
                         descriptionParts.push(`  (Obs: ${item.observation})`);
                     }
@@ -760,30 +773,43 @@
             for (const cat in menu) { if (cat !== 'adicionales' && menu[cat].takeawayFee) { takeawaySummary[cat] = { count: 0, totalCop: 0, totalUsd: 0 }; } }
 
             orderHistory.forEach(o => {
-                const deLaCalleCount = o.items.filter(i => i.name === SPECIAL_PRODUCT_NAME && i.domicilio).length;
-                if (deLaCalleCount > 0 && menu.perros && menu.perros.takeawayFee) {
-                    const numPairs = Math.floor(deLaCalleCount / 2);
-                    const numSingles = deLaCalleCount % 2;
-                    takeawaySummary.perros.count += numPairs + numSingles; 
-                    takeawaySummary.perros.totalCop += (numPairs * 1500) + (numSingles * 1000);
-                    takeawaySummary.perros.totalUsd += ((numPairs * 1500) + (numSingles * 1000)) / exchangeRate;
+                const specialProductCount = o.items.filter(i => i.name === SPECIAL_PRODUCT_NAME && i.domicilio).length;
+                if (specialProductCount > 0 && menu.perros && menu.perros.takeawayFee) {
+                    const numLarge = Math.floor(specialProductCount / 2);
+                    const numSmall = specialProductCount % 2;
+                    const smallFee = menu.perros.takeawayFee;
+                    
+                    if (!takeawaySummary['perros-grandes']) takeawaySummary['perros-grandes'] = { name: 'Envase Grande (Perro)', count: 0, totalCop: 0, totalUsd: 0 };
+                    if (!takeawaySummary['perros-pequenos']) takeawaySummary['perros-pequenos'] = { name: 'Envase Pequeño (Perro)', count: 0, totalCop: 0, totalUsd: 0 };
+                    
+                    takeawaySummary['perros-grandes'].count += numLarge;
+                    takeawaySummary['perros-grandes'].totalCop += numLarge * LARGE_PACKAGE_PRICE_COP;
+                    takeawaySummary['perros-grandes'].totalUsd += numLarge * (LARGE_PACKAGE_PRICE_COP / exchangeRate);
+
+                    takeawaySummary['perros-pequenos'].count += numSmall;
+                    takeawaySummary['perros-pequenos'].totalCop += numSmall * smallFee.cop;
+                    takeawaySummary['perros-pequenos'].totalUsd += numSmall * smallFee.usd;
                 }
+
                 o.items.forEach(i => {
                     const feeExempt = ['Refrescos', 'Agua Mineral', 'Cervezas'].includes(i.name.split(' (')[0]);
                     if (i.name !== SPECIAL_PRODUCT_NAME && i.domicilio && i.category && menu[i.category] && menu[i.category].takeawayFee && !feeExempt) {
                         const fee = menu[i.category].takeawayFee;
-                        if (takeawaySummary[i.category]) {
-                            takeawaySummary[i.category].count++;
-                            takeawaySummary[i.category].totalCop += fee.cop;
-                            takeawaySummary[i.category].totalUsd += fee.usd;
-                        }
+                        if (!takeawaySummary[i.category]) takeawaySummary[i.category] = { name: `Envase ${i.category}`, count: 0, totalCop: 0, totalUsd: 0 };
+                        takeawaySummary[i.category].count++;
+                        takeawaySummary[i.category].totalCop += fee.cop;
+                        takeawaySummary[i.category].totalUsd += fee.usd;
                     }
                 });
             });
 
-            const summaryTakeawayRows = Object.entries(takeawaySummary).filter(([_, data]) => data.count > 0).map(([cat, data]) => { const totalText = `COP ${data.totalCop.toLocaleString()}\nUSD $${data.totalUsd.toFixed(2)}`; return [cat.charAt(0).toUpperCase() + cat.slice(1), data.count, totalText]; });
+            const summaryTakeawayRows = Object.values(takeawaySummary).filter(data => data.count > 0).map(data => { 
+                const totalText = `COP ${data.totalCop.toLocaleString()}\nUSD $${data.totalUsd.toFixed(2)}`;
+                return [data.name, data.count, totalText];
+            });
+
             if(summaryTakeawayRows.length > 0) {
-                doc.autoTable({ head: [["Categoría", "Envases Usados", "Total Envases (COP/USD)"]], body: summaryTakeawayRows, startY: finalY + 10, pageBreak: 'avoid', headStyles, styles: bodyStyles });
+                doc.autoTable({ head: [["Tipo de Envase", "Cantidad Usada", "Total Ingresos (COP/USD)"]], body: summaryTakeawayRows, startY: finalY + 10, pageBreak: 'avoid', headStyles, styles: bodyStyles });
                 finalY = doc.lastAutoTable.finalY;
             }
 
@@ -822,9 +848,7 @@
             doc.line(14, 70, 196, 70);
 
             const tableRows = [];
-            const specialItemsForTakeaway = order.items.filter(item => item.name === SPECIAL_PRODUCT_NAME && item.domicilio);
-            let specialItemsProcessed = 0;
-
+            
             order.items.forEach(item => {
                 let itemTotalCop = item.cop;
                 let descriptionParts = [item.name];
@@ -835,38 +859,28 @@
                         descriptionParts.push(`  + ${ad.name} (COP ${ad.cop.toLocaleString()})`);
                     });
                 }
-                
-                const feeExempt = ['Refrescos', 'Agua Mineral', 'Cervezas'].includes(item.name.split(' (')[0]);
-
-                if (item.domicilio && !feeExempt) {
-                    if (item.name === SPECIAL_PRODUCT_NAME) {
-                        specialItemsProcessed++;
-                        const isPairStart = specialItemsProcessed % 2 === 1 && specialItemsProcessed < specialItemsForTakeaway.length;
-                        if (isPairStart) {
-                            itemTotalCop += 1500;
-                            descriptionParts.push(`  + Cargo Envase (x2) (COP 1,500)`);
-                        } else if (specialItemsProcessed % 2 === 1 && specialItemsProcessed === specialItemsForTakeaway.length) {
-                            itemTotalCop += 1000;
-                            descriptionParts.push(`  + Cargo Envase (x1) (COP 1,000)`);
-                        }
-                    } else if (item.category && menu[item.category] && menu[item.category].takeawayFee) {
-                        const fee = menu[item.category].takeawayFee;
-                        itemTotalCop += fee.cop;
-                        descriptionParts.push(`  + Cargo Envase (COP ${fee.cop.toLocaleString()})`);
-                    }
-                }
-                
-                if (item.observation) {
-                    descriptionParts.push(`  Obs: ${item.observation}`);
-                }
-
                 const finalDescription = descriptionParts.join('\n');
-                
-                // Only add the row if it's not a second item of a pair for the special product
-                const isSecondOfPair = item.name === SPECIAL_PRODUCT_NAME && item.domicilio && specialItemsProcessed % 2 === 0;
-                if (!isSecondOfPair) {
-                    const quantity = isPairStart ? 2 : 1;
-                    tableRows.push([quantity.toString(), finalDescription, `COP ${item.cop.toLocaleString()}`, `COP ${itemTotalCop.toLocaleString()}`]);
+                tableRows.push(['1', finalDescription, `COP ${item.cop.toLocaleString()}`, `COP ${itemTotalCop.toLocaleString()}`]);
+            });
+
+            // Agrupar costos de envase
+            const specialProductItems = order.items.filter(item => item.name === SPECIAL_PRODUCT_NAME && item.domicilio);
+            if (specialProductItems.length > 0 && menu.perros && menu.perros.takeawayFee) {
+                const numLarge = Math.floor(specialProductItems.length / 2);
+                const numSmall = specialProductItems.length % 2;
+                if (numLarge > 0) {
+                    tableRows.push([numLarge, `Cargo Envase Grande (${SPECIAL_PRODUCT_NAME})`, `COP ${LARGE_PACKAGE_PRICE_COP.toLocaleString()}`, `COP ${(numLarge * LARGE_PACKAGE_PRICE_COP).toLocaleString()}`]);
+                }
+                if (numSmall > 0) {
+                    tableRows.push([numSmall, `Cargo Envase Pequeño (${SPECIAL_PRODUCT_NAME})`, `COP ${menu.perros.takeawayFee.cop.toLocaleString()}`, `COP ${(numSmall * menu.perros.takeawayFee.cop).toLocaleString()}`]);
+                }
+            }
+
+            order.items.forEach(item => {
+                 const feeExempt = ['Refrescos', 'Agua Mineral', 'Cervezas'].includes(item.name.split(' (')[0]);
+                if (item.name !== SPECIAL_PRODUCT_NAME && item.domicilio && !feeExempt && item.category && menu[item.category] && menu[item.category].takeawayFee) {
+                    const fee = menu[item.category].takeawayFee;
+                    tableRows.push(['1', `Cargo Envase (${item.name})`, `COP ${fee.cop.toLocaleString()}`, `COP ${fee.cop.toLocaleString()}`]);
                 }
             });
 
@@ -948,7 +962,7 @@
             } else { e.target.checked = !e.target.checked; }
         });
 
-        saveOrderNumberBtn.addEventListener('click', () => { if (confirm('¿Estás seguro de que quieres cambiar el número de la próxima orden?')) { const newOrderNum = parseInt(getEl('set-order-number-input').value); if (!isNaN(newOrderNum) && newOrderNum > 0) { orderCounter = newOrderNum; saveState(); } else { alert('Por favor, ingrese un número válido.'); } } });
+        saveOrderNumberBtn.addEventListener('click', () => { if (confirm('¿Estás seguro de que quieres cambiar el número de la próxima orden?')) { const newOrderNum = parseInt(getEl('set-order-number-input').value); if (!isNaN(newOrderNum) && newOrderNum > 0) { orderCounter = newOrderNum; orderInfo.number.textContent = orderCounter.toString().padStart(4, '0'); alert(`Próximo número de orden establecido en ${orderCounter}.`); saveState(); } else { alert('Por favor, ingrese un número válido.'); } } });
         saveNameBtn.addEventListener('click', () => { if (confirm('¿Guardar nuevo nombre para este producto?')) { const [cat, index] = editProductSelect.value.split(','); const newName = editProductName.value.trim(); if (newName) { menu[cat].items[index].name = newName; alert('Nombre actualizado.'); saveState(); } else { alert('El nombre no puede estar vacío.'); } } });
         
         const renderVariantEditor = (cat, prodIndex) => {
@@ -1011,6 +1025,7 @@
                     ad.name = newName.trim();
                     ad.cop = parseFloat(newCop);
                     ad.usd = parseFloat(newUsd);
+                    renderAdicionalesAdmin();
                     saveState();
                 }
             } else { alert('Datos inválidos.'); }
@@ -1020,6 +1035,7 @@
             const adName = menu.adicionales[index].name;
             if (confirm(`¿Estás seguro de que quieres eliminar el adicional "${adName}"?`)) {
                 menu.adicionales.splice(index, 1);
+                renderAdicionalesAdmin();
                 saveState();
             }
         };
@@ -1053,19 +1069,37 @@
                     variant.variant = newName.trim();
                     variant.cop = parseFloat(newCop);
                     variant.usd = parseFloat(newUsd);
+                    renderVariantEditor(cat, prodIndex);
                     saveState();
                 }
             } else { alert('Datos inválidos.'); }
         };
 
-        const deleteVariant = ({ cat, prodIndex, variantIndex }) => { const variantName = menu[cat].items[prodIndex].variants[variantIndex].variant; if (confirm(`¿Estás seguro de que quieres eliminar la variante "${variantName}"?`)) { menu[cat].items[prodIndex].variants.splice(variantIndex, 1); saveState(); } };
-        getEl('add-variant-btn').addEventListener('click', () => { if (confirm('¿Añadir nueva variante?')) { const [cat, prodIndex] = editProductSelect.value.split(','); const name = getEl('add-variant-name').value.trim(), cop = parseFloat(getEl('add-variant-cop').value), usd = parseFloat(getEl('add-variant-usd').value); if (name && !isNaN(cop) && !isNaN(usd)) { menu[cat].items[prodIndex].variants.push({ variant: name, cop, usd, isAvailable: true }); saveState(); } } });
-        savePriceBtn.addEventListener('click', () => { if (confirm('¿Guardar los nuevos precios?')) { const [cat, index] = editProductSelect.value.split(','); const newCop = parseFloat(editPriceCop.value), newUsd = parseFloat(editPriceUsd.value); if (!isNaN(newCop) && !isNaN(newUsd)) { menu[cat].items[index].cop = newCop; menu[cat].items[index].usd = newUsd; alert('Precio actualizado.'); saveState(); } else { alert('Precios inválidos.'); } } });
+        const deleteVariant = ({ cat, prodIndex, variantIndex }) => { const variantName = menu[cat].items[prodIndex].variants[variantIndex].variant; if (confirm(`¿Estás seguro de que quieres eliminar la variante "${variantName}"?`)) { menu[cat].items[prodIndex].variants.splice(variantIndex, 1); renderVariantEditor(cat, prodIndex); saveState(); } };
+        getEl('add-variant-btn').addEventListener('click', () => { if (confirm('¿Añadir nueva variante?')) { const [cat, prodIndex] = editProductSelect.value.split(','); const name = getEl('add-variant-name').value.trim(), cop = parseFloat(getEl('add-variant-cop').value), usd = parseFloat(getEl('add-variant-usd').value); if (name && !isNaN(cop) && !isNaN(usd)) { menu[cat].items[prodIndex].variants.push({ variant: name, cop, usd, isAvailable: true }); renderVariantEditor(cat, prodIndex); getEl('add-variant-name').value = ''; getEl('add-variant-cop').value = ''; getEl('add-variant-usd').value = ''; saveState(); } } });
+        savePriceBtn.addEventListener('click', () => { if (confirm('¿Guardar los nuevos precios?')) { const [cat, index] = editProductSelect.value.split(','); const newCop = parseFloat(editPriceCop.value), newUsd = parseFloat(editPriceUsd.value); if (!isNaN(newCop) && !isNaN(newUsd)) { menu[cat].items[index].cop = newCop; menu[cat].items[index].usd = newUsd; alert('Precio actualizado.'); editPriceCop.value = ''; editPriceUsd.value = ''; saveState(); } else { alert('Precios inválidos.'); } } });
         saveTakeawayFeesBtn.addEventListener('click', () => { if (confirm('¿Guardar los precios de envase?')) { queryAll('#takeaway-fee-editor .fee-item').forEach(item => { const cat = item.querySelector('input[data-cat]').dataset.cat; const copInput = item.querySelector('input[data-currency="cop"]'); const usdInput = item.querySelector('input[data-currency="usd"]'); if (menu[cat]) { if (!menu[cat].takeawayFee) menu[cat].takeawayFee = {}; menu[cat].takeawayFee.cop = parseFloat(copInput.value) || 0; menu[cat].takeawayFee.usd = parseFloat(usdInput.value) || 0; } }); alert('Precios de envase actualizados.'); saveState(); } });
         addProductBtn.addEventListener('click', () => { if(confirm('¿Añadir este nuevo producto?')) { const cat = addCategorySelect.value, name = addProductName.value.trim(), cop = parseFloat(addPriceCop.value), usd = parseFloat(addPriceUsd.value); if (name && !isNaN(cop) && !isNaN(usd)) { menu[cat].items.push({ name, cop, usd, isAvailable: true }); alert(`Producto '${name}' añadido.`); saveState(); } else { alert('Complete todos los campos.'); } } });
         deleteProductBtn.addEventListener('click', () => { const productName = deleteProductSelect.options[deleteProductSelect.selectedIndex].text; if (confirm(`¿Estás seguro de que quieres eliminar el producto "${productName}"?`)) { const [cat, index] = deleteProductSelect.value.split(','); menu[cat].items.splice(index, 1); alert(`Producto '${productName}' eliminado.`); saveState(); } });
         saveExchangeRateBtn.addEventListener('click', () => { if (confirm('¿Guardar la nueva tasa de cambio?')) { const newRate = parseFloat(exchangeRateInput.value); if (!isNaN(newRate) && newRate > 0) { exchangeRate = newRate; alert('Tasa de cambio actualizada.'); saveState(); } else { alert('Por favor, ingrese un número válido.'); } } });
         
+        exportBtn.addEventListener('click', () => {
+            const stateToExport = { menu, orderHistory, orderCounter, exchangeRate };
+            const dataStr = JSON.stringify(stateToExport, (key, value) => {
+                if (value instanceof Date) {
+                    return value.toISOString();
+                }
+                return value;
+            }, 2);
+            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+            const link = document.createElement('a');
+            link.setAttribute('href', dataUri);
+            link.setAttribute('download', 'datos_restaurante.json');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
         importBtn.addEventListener('click', () => importInput.click());
         importInput.addEventListener('change', e => {
             const file = e.target.files[0]; if (!file) return;
@@ -1095,15 +1129,6 @@
 
         const init = () => {
             loadState();
-        };
-
-        init();
-    });
-    </script>
-
-</body>
-</html>
-State();
         };
 
         init();
