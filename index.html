@@ -251,7 +251,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         // --- INICIO DE LA CONFIGURACIÓN DE FIREBASE ---
         
-        // 1. Tu objeto de configuración de Firebase
+        // 1. Pega aquí tu objeto de configuración de Firebase
         const firebaseConfig = {
           apiKey: "AIzaSyB-qA6YtZKbwu8REVlspc0DQJSllq5wew0",
           authDomain: "la-perreria-9f2e1.firebaseapp.com",
@@ -327,7 +327,7 @@
                 } else {
                     console.log("No hay datos en Firebase. Se usarán los valores por defecto y se guardarán.");
                     initializeDefaultMenu();
-                    saveState();
+                    saveState(); 
                 }
 
                 if (isInitialLoad) {
@@ -688,7 +688,7 @@
             const orderRows = orderHistory.map(o => {
                 const timeAndDate = `${o.datetime.toLocaleTimeString('es-CO')}\n${o.datetime.toLocaleDateString('es-CO')}`;
                 
-                const deLaCalleTakeawayItems = o.items.filter(item => item.name === 'Perro de la Calle' && item.domicilio);
+                const deLaCalleTakeawayItems = o.items.filter(item => item.name === SPECIAL_PRODUCT_NAME && item.domicilio);
                 const deLaCalleFeeCount = deLaCalleTakeawayItems.length > 0 ? Math.ceil(deLaCalleTakeawayItems.length / 2) : 0;
                 let deLaCalleFeesApplied = 0;
 
@@ -700,7 +700,7 @@
                     const feeExempt = ['Refrescos', 'Agua Mineral', 'Cervezas'].includes(item.name.split(' (')[0]);
                     if (item.domicilio && !feeExempt) {
                         let fee = null;
-                        if (item.name === 'Perro de la Calle') {
+                        if (item.name === SPECIAL_PRODUCT_NAME) {
                             if (deLaCalleFeesApplied < deLaCalleFeeCount && menu.perros && menu.perros.takeawayFee) {
                                 fee = menu.perros.takeawayFee;
                                 deLaCalleFeesApplied++;
@@ -741,7 +741,7 @@
             for (const cat in menu) { if (cat !== 'adicionales' && menu[cat].takeawayFee) { takeawaySummary[cat] = { count: 0, totalCop: 0, totalUsd: 0 }; } }
 
             orderHistory.forEach(o => {
-                const deLaCalleCount = o.items.filter(i => i.name === 'Perro de la Calle' && i.domicilio).length;
+                const deLaCalleCount = o.items.filter(i => i.name === SPECIAL_PRODUCT_NAME && i.domicilio).length;
                 const deLaCalleFeeCount = Math.ceil(deLaCalleCount / 2);
                 if (deLaCalleFeeCount > 0 && menu.perros && menu.perros.takeawayFee) {
                     const fee = menu.perros.takeawayFee;
@@ -751,7 +751,7 @@
                 }
                 o.items.forEach(i => {
                     const feeExempt = ['Refrescos', 'Agua Mineral', 'Cervezas'].includes(i.name.split(' (')[0]);
-                    if (i.name !== 'Perro de la Calle' && i.domicilio && i.category && menu[i.category] && menu[i.category].takeawayFee && !feeExempt) {
+                    if (i.name !== SPECIAL_PRODUCT_NAME && i.domicilio && i.category && menu[i.category] && menu[i.category].takeawayFee && !feeExempt) {
                         const fee = menu[i.category].takeawayFee;
                         if (takeawaySummary[i.category]) {
                             takeawaySummary[i.category].count++;
@@ -803,7 +803,7 @@
             doc.line(14, 70, 196, 70);
 
             const tableRows = [];
-            const deLaCalleTakeawayItems = order.items.filter(item => item.name === 'Perro de la Calle' && item.domicilio);
+            const deLaCalleTakeawayItems = order.items.filter(item => item.name === SPECIAL_PRODUCT_NAME && item.domicilio);
             const deLaCalleFeeCount = deLaCalleTakeawayItems.length > 0 ? Math.ceil(deLaCalleTakeawayItems.length / 2) : 0;
             let deLaCalleFeesApplied = 0;
 
@@ -821,7 +821,7 @@
                 const feeExempt = ['Refrescos', 'Agua Mineral', 'Cervezas'].includes(item.name.split(' (')[0]);
                 if (item.domicilio && !feeExempt) {
                     let fee = null;
-                    if (item.name === 'Perro de la Calle') {
+                    if (item.name === SPECIAL_PRODUCT_NAME) {
                         if (deLaCalleFeesApplied < deLaCalleFeeCount && menu.perros && menu.perros.takeawayFee) {
                             fee = menu.perros.takeawayFee;
                             deLaCalleFeesApplied++;
@@ -875,6 +875,7 @@
         
         // Admin Logic
         const populateAdminForms = () => {
+            if (!menu.perros) return; // Don't run if menu is not loaded
             getEl('set-order-number-input').value = orderCounter;
             getEl('exchange-rate-input').value = exchangeRate;
             editProductSelect.innerHTML = ''; addCategorySelect.innerHTML = ''; deleteProductSelect.innerHTML = ''; takeawayFeeEditor.innerHTML = '';
@@ -896,8 +897,8 @@
 
         const handleProductSelectionChange = () => {
             const [cat, index] = editProductSelect.value.split(',');
-            const product = menu[cat]?.items[index];
-            if (!product) return;
+            if (!menu[cat] || !menu[cat].items[index]) return;
+            const product = menu[cat].items[index];
             editProductName.value = product.name;
             productAvailableCheckbox.checked = product.isAvailable !== false;
             if (product.variants) {
@@ -922,7 +923,7 @@
         });
 
         saveOrderNumberBtn.addEventListener('click', () => { if (confirm('¿Estás seguro de que quieres cambiar el número de la próxima orden?')) { const newOrderNum = parseInt(getEl('set-order-number-input').value); if (!isNaN(newOrderNum) && newOrderNum > 0) { orderCounter = newOrderNum; orderInfo.number.textContent = orderCounter.toString().padStart(4, '0'); alert(`Próximo número de orden establecido en ${orderCounter}.`); saveState(); } else { alert('Por favor, ingrese un número válido.'); } } });
-        saveNameBtn.addEventListener('click', () => { if (confirm('¿Guardar nuevo nombre para este producto?')) { const [cat, index] = editProductSelect.value.split(','); const newName = editProductName.value.trim(); if (newName) { menu[cat].items[index].name = newName; alert('Nombre actualizado.'); populateAdminForms(); renderCategoryButtons(); saveState(); } else { alert('El nombre no puede estar vacío.'); } } });
+        saveNameBtn.addEventListener('click', () => { if (confirm('¿Guardar nuevo nombre para este producto?')) { const [cat, index] = editProductSelect.value.split(','); const newName = editProductName.value.trim(); if (newName) { menu[cat].items[index].name = newName; alert('Nombre actualizado.'); saveState(); } else { alert('El nombre no puede estar vacío.'); } } });
         
         const renderVariantEditor = (cat, prodIndex) => {
             variantList.innerHTML = '';
@@ -1006,10 +1007,6 @@
                 const usd = parseFloat(getEl('add-adicional-usd').value);
                 if (name && !isNaN(cop) && !isNaN(usd)) {
                     menu.adicionales.push({ name, cop, usd, isAvailable: true });
-                    renderAdicionalesAdmin();
-                    getEl('add-adicional-name').value = '';
-                    getEl('add-adicional-cop').value = '';
-                    getEl('add-adicional-usd').value = '';
                     saveState();
                 } else {
                     alert('Por favor, complete todos los campos del adicional con valores válidos.');
@@ -1042,10 +1039,23 @@
         getEl('add-variant-btn').addEventListener('click', () => { if (confirm('¿Añadir nueva variante?')) { const [cat, prodIndex] = editProductSelect.value.split(','); const name = getEl('add-variant-name').value.trim(), cop = parseFloat(getEl('add-variant-cop').value), usd = parseFloat(getEl('add-variant-usd').value); if (name && !isNaN(cop) && !isNaN(usd)) { menu[cat].items[prodIndex].variants.push({ variant: name, cop, usd, isAvailable: true }); renderVariantEditor(cat, prodIndex); getEl('add-variant-name').value = ''; getEl('add-variant-cop').value = ''; getEl('add-variant-usd').value = ''; saveState(); } } });
         savePriceBtn.addEventListener('click', () => { if (confirm('¿Guardar los nuevos precios?')) { const [cat, index] = editProductSelect.value.split(','); const newCop = parseFloat(editPriceCop.value), newUsd = parseFloat(editPriceUsd.value); if (!isNaN(newCop) && !isNaN(newUsd)) { menu[cat].items[index].cop = newCop; menu[cat].items[index].usd = newUsd; alert('Precio actualizado.'); editPriceCop.value = ''; editPriceUsd.value = ''; saveState(); } else { alert('Precios inválidos.'); } } });
         saveTakeawayFeesBtn.addEventListener('click', () => { if (confirm('¿Guardar los precios de envase?')) { queryAll('#takeaway-fee-editor .fee-item').forEach(item => { const cat = item.querySelector('input[data-cat]').dataset.cat; const copInput = item.querySelector('input[data-currency="cop"]'); const usdInput = item.querySelector('input[data-currency="usd"]'); if (menu[cat]) { if (!menu[cat].takeawayFee) menu[cat].takeawayFee = {}; menu[cat].takeawayFee.cop = parseFloat(copInput.value) || 0; menu[cat].takeawayFee.usd = parseFloat(usdInput.value) || 0; } }); alert('Precios de envase actualizados.'); saveState(); } });
-        addProductBtn.addEventListener('click', () => { if(confirm('¿Añadir este nuevo producto?')) { const cat = addCategorySelect.value, name = addProductName.value.trim(), cop = parseFloat(addPriceCop.value), usd = parseFloat(addPriceUsd.value); if (name && !isNaN(cop) && !isNaN(usd)) { menu[cat].items.push({ name, cop, usd, isAvailable: true }); alert(`Producto '${name}' añadido.`); populateAdminForms(); renderCategoryButtons(); addProductName.value = ''; addPriceCop.value = ''; addPriceUsd.value = ''; saveState(); } else { alert('Complete todos los campos.'); } } });
-        deleteProductBtn.addEventListener('click', () => { const productName = deleteProductSelect.options[deleteProductSelect.selectedIndex].text; if (confirm(`¿Estás seguro de que quieres eliminar el producto "${productName}"?`)) { const [cat, index] = deleteProductSelect.value.split(','); menu[cat].items.splice(index, 1); alert(`Producto '${productName}' eliminado.`); populateAdminForms(); renderCategoryButtons(); saveState(); } });
+        addProductBtn.addEventListener('click', () => { if(confirm('¿Añadir este nuevo producto?')) { const cat = addCategorySelect.value, name = addProductName.value.trim(), cop = parseFloat(addPriceCop.value), usd = parseFloat(addPriceUsd.value); if (name && !isNaN(cop) && !isNaN(usd)) { menu[cat].items.push({ name, cop, usd, isAvailable: true }); alert(`Producto '${name}' añadido.`); saveState(); } else { alert('Complete todos los campos.'); } } });
+        deleteProductBtn.addEventListener('click', () => { const productName = deleteProductSelect.options[deleteProductSelect.selectedIndex].text; if (confirm(`¿Estás seguro de que quieres eliminar el producto "${productName}"?`)) { const [cat, index] = deleteProductSelect.value.split(','); menu[cat].items.splice(index, 1); alert(`Producto '${productName}' eliminado.`); saveState(); } });
         saveExchangeRateBtn.addEventListener('click', () => { if (confirm('¿Guardar la nueva tasa de cambio?')) { const newRate = parseFloat(exchangeRateInput.value); if (!isNaN(newRate) && newRate > 0) { exchangeRate = newRate; alert('Tasa de cambio actualizada.'); saveState(); } else { alert('Por favor, ingrese un número válido.'); } } });
-        exportBtn.addEventListener('click', () => { const dataStr = JSON.stringify({ menu, orderHistory, orderCounter, exchangeRate }); const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr); const link = document.createElement('a'); link.setAttribute('href', dataUri); link.setAttribute('download', 'datos_restaurante.json'); document.body.appendChild(link); link.click(); document.body.removeChild(link); });
+        
+        // El export ahora exporta los datos locales actuales.
+        exportBtn.addEventListener('click', () => {
+            const stateToExport = { menu, orderHistory, orderCounter, exchangeRate };
+            const dataStr = JSON.stringify(stateToExport, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+            const link = document.createElement('a');
+            link.setAttribute('href', dataUri);
+            link.setAttribute('download', 'datos_restaurante.json');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
         importBtn.addEventListener('click', () => importInput.click());
         importInput.addEventListener('change', e => {
             const file = e.target.files[0]; if (!file) return;
@@ -1053,15 +1063,16 @@
             reader.onload = event => {
                 try {
                     const data = JSON.parse(event.target.result);
-                    if (data.menu && typeof data.orderHistory !== 'undefined' && typeof data.orderCounter !== 'undefined') {
-                        menu = data.menu;
-                        orderHistory = data.orderHistory.map(o => ({ ...o, datetime: new Date(o.datetime) }));
-                        orderCounter = data.orderCounter;
-                        exchangeRate = data.exchangeRate || 4000;
-                        saveState(); 
-                        alert('Datos importados y sincronizados con éxito. La página se recargará.');
-                        setTimeout(() => location.reload(), 1000);
-                    } else { alert('Archivo JSON no válido o incompleto.'); }
+                    if (confirm("¿Estás seguro de que quieres sobrescribir TODOS los datos en la nube con este archivo? Esta acción es irreversible.")) {
+                        if (data.menu && typeof data.orderHistory !== 'undefined' && typeof data.orderCounter !== 'undefined') {
+                            menu = data.menu;
+                            orderHistory = data.orderHistory.map(o => ({ ...o, datetime: new Date(o.datetime) }));
+                            orderCounter = data.orderCounter;
+                            exchangeRate = data.exchangeRate || 4000;
+                            saveState(); // Sube y sobrescribe los datos en Firebase
+                            alert('Datos importados y sincronizados con éxito.');
+                        } else { alert('Archivo JSON no válido o incompleto.'); }
+                    }
                 } catch (err) { alert('Error al leer el archivo.'); }
             };
             reader.readAsText(file); e.target.value = '';
@@ -1070,6 +1081,25 @@
         newOrderBtn.addEventListener('click', startNewOrder);
         deliveryCheckbox.addEventListener('change', (e) => {
             deliveryInputs.style.display = e.target.checked ? 'grid' : 'none';
+        });
+
+        // --- BLOQUEO DE CLIC DERECHO Y TECLAS DE DESARROLLADOR ---
+        // Nota: Esto es una medida disuasoria, no una seguridad completa.
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        document.addEventListener('keydown', event => {
+            if (event.keyCode == 123) { // F12
+                event.preventDefault();
+                return false;
+            } else if (event.ctrlKey && event.shiftKey && event.keyCode == 'I'.charCodeAt(0)) { // Ctrl+Shift+I
+                event.preventDefault();
+                return false;
+            } else if (event.ctrlKey && event.shiftKey && event.keyCode == 'J'.charCodeAt(0)) { // Ctrl+Shift+J
+                event.preventDefault();
+                return false;
+            } else if (event.ctrlKey && event.keyCode == 'U'.charCodeAt(0)) { // Ctrl+U
+                event.preventDefault();
+                return false;
+            }
         });
 
         const init = () => {
@@ -1082,5 +1112,7 @@
 
 </body>
 </html>
+</script>
+
 </body>
 </html>
