@@ -7,6 +7,11 @@
     <!-- Librerías para generar PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    
+    <!-- Scripts de Firebase (versión 8 compatible con este código) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
     <style>
         :root {
             --bg-color: #000000; --surface-color: #1a1a1a; --primary-btn-color: #F8BE01;
@@ -39,15 +44,24 @@
         
         .order-info {
             background-color: var(--surface-color); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;
-            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
             border: 1px solid var(--border-color);
         }
+        #client-name, #delivery-container {
+            grid-column: 1 / -1; width: 100%;
+        }
+        #client-name, #delivery-cost-cop, #delivery-address {
+            padding: 0.5rem; border: 1px solid var(--border-color);
+            background-color: #333; color: var(--text-color); border-radius: 4px; width: 100%;
+        }
+        #delivery-inputs { display: none; margin-top: 0.5rem; display: none; gap: 0.5rem; }
         .table-selector { display: flex; align-items: center; gap: 0.5rem; }
         .table-selector button {
             width: 44px; height: 44px; border-radius: 50%; font-size: 2rem; line-height: 1;
             display: flex; align-items: center; justify-content: center; padding: 0;
         }
         #table-number { font-size: 1.5rem; font-weight: bold; }
+        #new-order-btn { display: none; }
 
         .category-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 1rem; }
         .category-buttons button {
@@ -71,6 +85,9 @@
         .order-item:last-child { border-bottom: none; }
         .item-details .price { font-size: 0.9rem; color: #aaa; }
         .item-observation { font-style: italic; color: var(--primary-btn-color); font-size: 0.8rem; }
+        .adicional-list { padding-left: 1rem; margin-top: 0.25rem; font-size: 0.85rem; color: #ccc; }
+        .adicional-list-item { display: flex; justify-content: space-between; align-items: center; }
+        .adicional-list-item button { padding: 0.1rem 0.4rem; font-size: 0.8rem; line-height: 1; }
         .takeaway-fee { font-size: 0.8rem; color: var(--success-color); font-style: italic; }
         .item-actions { display: flex; align-items: center; gap: 0.5rem; }
         .item-actions button { padding: 0.5rem; font-size: 0.8rem; line-height: 1; }
@@ -93,41 +110,33 @@
         @keyframes slide-down { from { transform: translateY(-30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .modal-header { border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 1rem; }
         .modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
-        #modal-product-list .product-item {
+        .product-item {
             padding: 0.75rem; border-bottom: 1px solid var(--border-color); cursor: pointer;
             display: flex; justify-content: space-between;
         }
-        #modal-product-list .product-item:hover { background-color: #2a2a2a; }
-        
+        .product-item:hover { background-color: #2a2a2a; }
+        .product-item.unavailable {
+            color: #666; text-decoration: line-through; cursor: not-allowed;
+        }
+        .product-item.unavailable:hover { background-color: initial; }
+
         .history-table { width: 100%; border-collapse: collapse; background-color: var(--surface-color); }
         .history-table th, .history-table td { padding: 0.75rem; text-align: left; border: 1px solid var(--border-color); vertical-align: top;}
         .history-table th { background-color: #252525; }
         .history-table td .total-price { font-size: 0.9rem; white-space: nowrap; }
-        .order-actions { display: flex; gap: 0.25rem; margin-top: 0.5rem; }
-        .order-actions button { padding: 0.5rem; min-width: 35px; display: flex; align-items: center; justify-content: center; }
+        .order-actions { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.5rem; }
+        .order-actions button { padding: 0.5rem; min-width: 35px; display: flex; align-items: center; justify-content: center; flex-grow: 1;}
         .whatsapp-icon { width: 18px; height: 18px; fill: white; }
         .order-time { font-size: 0.8em; color: #aaa; margin-top: 4px; }
         .history-controls { margin-top: 1rem; display: flex; gap: 1rem; }
 
-        .toggle-switch {
-            width: 120px; height: 34px; background: var(--secondary-btn-color);
-            border-radius: 17px; position: relative; cursor: pointer;
-            transition: background-color 0.3s ease;
-            display: flex; align-items: center; user-select: none;
+        .state-btn {
+            padding: 0.5rem 1rem; font-size: 0.8rem; width: 120px;
+            color: white; border-radius: 4px;
         }
-        .toggle-switch .knob {
-            width: 28px; height: 28px; background: white; border-radius: 50%;
-            position: absolute; top: 3px; left: 4px;
-            transition: transform 0.3s ease;
-        }
-        .toggle-switch .text {
-            font-size: 0.8rem; color: white; font-weight: bold;
-            position: absolute; line-height: 34px;
-        }
-        .toggle-switch[data-state="pendiente"] .text { left: 40px; }
-        .toggle-switch[data-state="finalizado"] { background: var(--success-color); }
-        .toggle-switch[data-state="finalizado"] .knob { transform: translateX(85px); }
-        .toggle-switch[data-state="finalizado"] .text { right: 15px; }
+        .state-btn.pendiente { background-color: var(--secondary-btn-color); }
+        .state-btn.finalizado { background-color: var(--success-color); }
+
 
         #admin-view .form-group { margin-bottom: 1.5rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 8px; }
         #admin-view h3, #admin-view h4 { border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 1rem; }
@@ -136,7 +145,9 @@
             width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 4px;
             background-color: #333; color: var(--text-color); margin-bottom: 0.5rem;
         }
-        #variant-editor .variant-item, .takeaway-fee-editor .fee-item { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
+        .variant-item, .takeaway-fee-editor .fee-item, .availability-item, .adicional-item { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
+        .availability-item label, .variant-item label, .adicional-item label { flex-grow: 1; }
+        .variant-item .btn-small, .adicional-item .btn-small { padding: 0.4rem 0.6rem; font-size: 0.8rem; }
         #data-management-buttons { display: flex; gap: 1rem; }
 
         @media (max-width: 768px) { body { padding-bottom: 80px; } }
@@ -162,7 +173,28 @@
     <main class="container">
         <!-- VISTA PRINCIPAL -->
         <section id="main-view" class="active">
-            <div class="order-info"><div class="order-info-details"><strong>Orden:</strong> <span id="order-number">0001</span></div><div class="table-selector"><button id="decrement-table" class="btn-secondary">-</button><span>Mesa <span id="table-number">1</span></span><button id="increment-table" class="btn-secondary">+</button></div></div>
+            <div class="order-info">
+                <div class="order-info-details">
+                    <strong>Orden:</strong> <span id="order-number">0001</span>
+                    <button id="new-order-btn" class="btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; margin-left: 1rem;">Nueva Orden</button>
+                </div>
+                <div class="table-selector">
+                    <button id="decrement-table" class="btn-secondary">-</button>
+                    <span>Mesa <span id="table-number">1</span></span>
+                    <button id="increment-table" class="btn-secondary">+</button>
+                </div>
+                <input type="text" id="client-name" placeholder="Nombre del Cliente">
+                <div id="delivery-container">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <label for="delivery-checkbox">Domicilio</label>
+                        <input type="checkbox" id="delivery-checkbox" style="width: auto;">
+                    </div>
+                    <div id="delivery-inputs">
+                        <input type="number" id="delivery-cost-cop" placeholder="Costo Domicilio (COP)">
+                        <input type="text" id="delivery-address" placeholder="Dirección de Entrega">
+                    </div>
+                </div>
+            </div>
             <div class="category-buttons" id="category-buttons-container"></div>
             <div class="datetime-display"><span id="order-datetime"></span></div>
             <h3>Pedido Actual</h3>
@@ -172,7 +204,7 @@
         <!-- VISTA DE HISTORIAL -->
         <section id="history-view">
             <h2>Historial de Pedidos del Día</h2>
-            <div class="history-table-container" style="overflow-x: auto;"><table class="history-table"><thead><tr><th>Pedido</th><th>Mesa</th><th>Total</th><th>Estado</th></tr></thead><tbody id="history-table-body"></tbody></table></div>
+            <div class="history-table-container" style="overflow-x: auto;"><table class="history-table"><thead><tr><th>Pedido</th><th>Cliente / Mesa</th><th>Total</th><th>Estado</th></tr></thead><tbody id="history-table-body"></tbody></table></div>
             <div class="history-controls"><button id="clear-history-btn" class="btn-secondary">Limpiar Historial</button><button id="download-pdf-btn" class="btn-primary">Descargar PDF</button></div>
         </section>
         
@@ -181,9 +213,30 @@
             <h2>Gestión de Datos y Orden</h2>
             <div class="form-group" id="data-management-buttons"><button id="export-data-btn" class="btn-primary">Exportar Datos</button><button id="import-data-btn" class="btn-secondary">Importar Datos</button><input type="file" id="import-file-input" accept=".json" style="display: none;"></div>
             <div class="form-group"><h3>Gestionar Número de Orden</h3><label for="set-order-number-input">Establecer Próximo N° de Orden:</label><input type="number" id="set-order-number-input" min="1"><button id="save-order-number-btn" class="btn-primary" style="margin-top: 0.5rem;">Guardar N° de Orden</button></div>
+            <div class="form-group"><h3>Tasa de Cambio (COP a USD)</h3><label for="exchange-rate-input">1 USD = </label><input type="number" id="exchange-rate-input"><button id="save-exchange-rate-btn" class="btn-primary" style="margin-top: 0.5rem;">Guardar Tasa</button></div>
+            
             <h2>Administración del Menú</h2>
+            <div class="form-group">
+                <h3>Gestionar Adicionales</h3>
+                <div id="adicionales-editor-list"></div>
+                <hr style="margin: 1rem 0; border-color: var(--border-color);">
+                <h4>Añadir Nuevo Adicional</h4>
+                <div class="adicional-item">
+                    <input type="text" id="add-adicional-name" placeholder="Nombre (ej. Tocineta)">
+                    <input type="number" id="add-adicional-cop" placeholder="Precio COP">
+                    <input type="number" id="add-adicional-usd" placeholder="Precio USD" step="0.01">
+                    <button id="add-adicional-btn" class="btn-primary" style="background-color: #4caf50;">+</button>
+                </div>
+            </div>
             <div class="form-group"><h3>Editar Precios de Envase (Para Llevar)</h3><div id="takeaway-fee-editor"></div><button id="save-takeaway-fees-btn" class="btn-primary" style="margin-top: 1rem;">Guardar Precios de Envase</button></div>
-            <div class="form-group"><h3>Editar Producto</h3><label>Seleccionar Producto:</label><select id="edit-product-select"></select><div id="name-editor" style="margin-top: 1rem;"><h4>Editar Nombre</h4><input type="text" id="edit-product-name"><button id="save-name-btn" class="btn-primary">Guardar Nombre</button></div><hr style="margin: 1rem 0; border-color: var(--border-color);"><div id="price-editor-normal"><h4>Editar Precios</h4><label>Nuevo Precio (COP):</label><input type="number" id="edit-price-cop" placeholder="Ej: 15000"><label>Nuevo Precio (USD):</label><input type="number" id="edit-price-usd" step="0.01" placeholder="Ej: 4.00"><button id="save-price-btn" class="btn-primary" style="margin-top: 0.5rem;">Guardar Precio</button></div><div id="variant-editor" style="display:none;"><h4>Editar Variantes</h4><div id="variant-list"></div><h5>Añadir Nueva Variante</h5><div class="variant-item"><input type="text" id="add-variant-name" placeholder="Nombre (ej. Personal)"><input type="number" id="add-variant-cop" placeholder="Precio COP"><input type="number" id="add-variant-usd" placeholder="Precio USD" step="0.01"><button id="add-variant-btn" class="btn-primary" style="background-color: #4caf50;">+</button></div></div></div>
+            <div class="form-group"><h3>Editar Producto</h3><label>Seleccionar Producto:</label><select id="edit-product-select"></select>
+                <div id="availability-editor" style="margin-top: 1rem;"><h4>Disponibilidad</h4><div class="availability-item"><label for="product-available-checkbox">Producto Disponible</label><input type="checkbox" id="product-available-checkbox" style="width: auto;"></div></div>
+                <hr style="margin: 1rem 0; border-color: var(--border-color);">
+                <div id="name-editor"><h4>Editar Nombre</h4><input type="text" id="edit-product-name"><button id="save-name-btn" class="btn-primary">Guardar Nombre</button></div>
+                <hr style="margin: 1rem 0; border-color: var(--border-color);">
+                <div id="price-editor-normal"><h4>Editar Precios</h4><label>Nuevo Precio (COP):</label><input type="number" id="edit-price-cop" placeholder="Ej: 15000"><label>Nuevo Precio (USD):</label><input type="number" id="edit-price-usd" step="0.01" placeholder="Ej: 4.00"><button id="save-price-btn" class="btn-primary" style="margin-top: 0.5rem;">Guardar Precio</button></div>
+                <div id="variant-editor" style="display:none;"><h4>Editar Variantes</h4><div id="variant-list"></div><h5>Añadir Nueva Variante</h5><div class="variant-item"><input type="text" id="add-variant-name" placeholder="Nombre (ej. Personal)"><input type="number" id="add-variant-cop" placeholder="Precio COP"><input type="number" id="add-variant-usd" placeholder="Precio USD" step="0.01"><button id="add-variant-btn" class="btn-primary" style="background-color: #4caf50;">+</button></div></div>
+            </div>
             <div class="form-group"><h3>Añadir Producto</h3><label>Categoría:</label><select id="add-category-select"></select><label>Nombre del Producto:</label><input type="text" id="add-product-name" placeholder="Ej: Perro Suizo"><label>Precio (COP):</label><input type="number" id="add-price-cop" placeholder="Ej: 28000"><label>Precio (USD):</label><input type="number" id="add-price-usd" step="0.01" placeholder="Ej: 7.00"><button id="add-product-btn" class="btn-primary" style="margin-top: 0.5rem; background-color: #4caf50;">Añadir Producto</button></div>
             <div class="form-group"><h3>Eliminar Producto</h3><select id="delete-product-select"></select><button id="delete-product-btn" class="btn-secondary" style="margin-top: 0.5rem;">Eliminar Producto</button></div>
         </section>
@@ -191,19 +244,43 @@
 
     <button id="finalize-order-btn">FINALIZAR ORDEN</button>
     <div id="products-modal" class="modal"><div class="modal-content"><div class="modal-header"><h2 id="modal-category-title"></h2></div><div id="modal-product-list"></div><div class="modal-footer"><button id="modal-close-btn" class="btn-secondary">Cerrar</button></div></div></div>
+    <div id="adicionales-modal" class="modal"><div class="modal-content"><div class="modal-header"><h2>Añadir Adicionales</h2></div><div id="modal-adicionales-list"></div><div class="modal-footer"><button id="adicionales-modal-close-btn" class="btn-secondary">Cerrar</button></div></div></div>
     <div id="order-details-modal" class="modal"><div class="modal-content"><div class="modal-header"><h2>Detalles del Pedido</h2></div><div id="order-details-content"></div><div class="modal-footer"><button id="download-invoice-btn" class="btn-primary">Descargar Factura</button><button id="details-modal-close-btn" class="btn-secondary">Cerrar</button></div></div></div>
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
-        let menu = {
-            perros: { icon: '🌭', takeawayFee: { cop: 1000, usd: 0.25 }, items: [ { name: "De la Calle", cop: 6000, usd: 1.50 }, { name: "Loco", cop: 14000, usd: 3.50 }, { name: "Ladra...Pica", cop: 0, usd: 0 }, { name: "Criollo Dog", cop: 20000, usd: 5.00 }, { name: "Granjero", cop: 24000, usd: 6.00 }, { name: "Chorreao", cop: 30000, usd: 7.50 }, { name: "Sifri Dog", cop: 32000, usd: 8.00 }, { name: "Boleta", cop: 34000, usd: 8.50 } ] },
-            papas: { icon: '🍟', takeawayFee: { cop: 500, usd: 0.125 }, items: [ { name: "Tocino y Queso", cop: 10000, usd: 2.50 }, { name: "Al pimiento", cop: 8000, usd: 2.00 }, { name: "Rústicas", cop: 6000, usd: 1.50 }, { name: "Papas Rellenas", cop: 8000, usd: 2.00 } ] },
-            salchipapa: { icon: '🥔', takeawayFee: { cop: 1000, usd: 0.25 }, items: [ { name: "Salchipapa Clasica", cop: 12000, usd: 3.00 } ] },
-            bebidas: { icon: '🥤', takeawayFee: { cop: 500, usd: 0.125 }, items: [ { name: "Agua Mineral", cop: 0, usd: 0 }, { name: "Refrescos", variants: [ { variant: "Personal", cop: 4000, usd: 1.00 }, { variant: "Dos", cop: 6000, usd: 1.50 }, { variant: "Litro y medio", cop: 8000, usd: 2.00 } ] }, { name: "Jugos Naturales", variants: [] }, { name: "Micheladas", cop: 16000, usd: 4.00 }, { name: "Cervezas", cop: 0, usd: 0 } ]}
+        // --- INICIO DE LA CONFIGURACIÓN DE FIREBASE ---
+        
+        // 1. Pega aquí tu objeto de configuración de Firebase
+        const firebaseConfig = {
+          apiKey: "AIzaSyB-qA6YtZKbwu8REVlspc0DQJSllq5wew0",
+          authDomain: "la-perreria-9f2e1.firebaseapp.com",
+          projectId: "la-perreria-9f2e1",
+          storageBucket: "la-perreria-9f2e1.appspot.com",
+          messagingSenderId: "45538078579",
+          appId: "1:45538078579:web:a81635bc5cb507fcc19f06",
+          measurementId: "G-T84XMRCYC3"
         };
 
-        let currentOrder = [], orderHistory = [], orderCounter = 1, tableNumber = 1;
+        // 2. Inicializa Firebase y Firestore
+        const app = firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const docRef = db.collection("estado").doc("datos");
+
+        // --- FIN DE LA CONFIGURACIÓN DE FIREBASE ---
+
+        let menu = {};
+        let currentOrder = [], orderHistory = [], orderCounter = 1, tableNumber = 1, exchangeRate = 4000;
+        let editingOrderIndex = null;
+        
         const ADMIN_PASSWORD = "1234";
+        const logoBase64 = 'data:image/png;base64,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';
+
+        // --- Producto con Lógica Especial de Empacado ---
+        // Si quieres cambiar el nombre "De la Calle", solo modifica el texto dentro de las comillas aquí.
+        const SPECIAL_PRODUCT_NAME = "De la Calle"; 
+
+        // --- DOM Elements ---
         const getEl = id => document.getElementById(id);
         const queryAll = sel => document.querySelectorAll(sel);
         const views = { main: getEl('main-view'), history: getEl('history-view'), admin: getEl('admin-view') };
@@ -214,8 +291,14 @@
         const modalProductList = getEl('modal-product-list'), modalCloseBtn = getEl('modal-close-btn'), historyTableBody = getEl('history-table-body');
         const clearHistoryBtn = getEl('clear-history-btn'), downloadPdfBtn = getEl('download-pdf-btn'), detailsModal = getEl('order-details-modal');
         const detailsContent = getEl('order-details-content'), detailsModalCloseBtn = getEl('details-modal-close-btn'), downloadInvoiceBtn = getEl('download-invoice-btn');
+        const newOrderBtn = getEl('new-order-btn');
+        const clientNameInput = getEl('client-name');
+        const deliveryCheckbox = getEl('delivery-checkbox'), deliveryInputs = getEl('delivery-inputs'), deliveryCostInput = getEl('delivery-cost-cop'), deliveryAddressInput = getEl('delivery-address');
+        const adicionalesModal = getEl('adicionales-modal'), modalAdicionalesList = getEl('modal-adicionales-list'), adicionalesModalCloseBtn = getEl('adicionales-modal-close-btn');
+
         // Admin Elements
         const saveOrderNumberBtn = getEl('save-order-number-btn');
+        const exchangeRateInput = getEl('exchange-rate-input'), saveExchangeRateBtn = getEl('save-exchange-rate-btn');
         const editProductSelect = getEl('edit-product-select'), editProductName = getEl('edit-product-name'), saveNameBtn = getEl('save-name-btn');
         const editPriceCop = getEl('edit-price-cop'), editPriceUsd = getEl('edit-price-usd'), savePriceBtn = getEl('save-price-btn');
         const addCategorySelect = getEl('add-category-select'), addProductName = getEl('add-product-name'), addPriceCop = getEl('add-price-cop');
@@ -223,84 +306,280 @@
         const deleteProductBtn = getEl('delete-product-btn'), priceEditorNormal = getEl('price-editor-normal'), variantEditor = getEl('variant-editor');
         const variantList = getEl('variant-list'), exportBtn = getEl('export-data-btn'), importBtn = getEl('import-data-btn'), importInput = getEl('import-file-input');
         const takeawayFeeEditor = getEl('takeaway-fee-editor'), saveTakeawayFeesBtn = getEl('save-takeaway-fees-btn');
+        const productAvailableCheckbox = getEl('product-available-checkbox');
+        const adicionalesEditorList = getEl('adicionales-editor-list');
+
+        // --- Data Persistence ---
+        const saveState = () => {
+            const state = { menu, orderHistory, orderCounter, exchangeRate };
+            // Firebase maneja la conversión de fechas, no se necesita pre-procesamiento complejo.
+            docRef.set(state).catch(error => console.error("Error al guardar en Firebase:", error));
+        };
+
+        const loadState = () => {
+            docRef.onSnapshot(doc => {
+                let isInitialLoad = !menu.perros; // Comprueba si el menú está vacío para la carga inicial
+                
+                if (doc.exists) {
+                    const state = doc.data();
+                    menu = state.menu;
+                    // Convierte los Timestamps de Firestore a objetos Date de JavaScript
+                    orderHistory = state.orderHistory.map(o => ({ ...o, datetime: o.datetime.toDate() }));
+                    orderCounter = state.orderCounter;
+                    exchangeRate = state.exchangeRate || 4000;
+                } else {
+                    console.log("No hay datos en Firebase. Se usarán los valores por defecto y se guardarán.");
+                    initializeDefaultMenu();
+                    saveState(); // Guarda el estado inicial en Firebase
+                }
+
+                if (isInitialLoad) {
+                    updateDateTime();
+                    setInterval(updateDateTime, 1000);
+                    startNewOrder();
+                    switchView('main');
+                }
+
+                renderHistory();
+                orderInfo.number.textContent = orderCounter.toString().padStart(4, '0');
+                if (views.admin.classList.contains('active')) {
+                    populateAdminForms();
+                }
+                renderCategoryButtons();
+                console.log("Datos actualizados en tiempo real desde Firebase!");
+
+            }, error => {
+                console.error("Error al cargar datos en tiempo real:", error);
+                initializeDefaultMenu();
+                init();
+            });
+        };
+        
+        const initializeDefaultMenu = () => {
+            menu = {
+                perros: { icon: '🌭', takeawayFee: { cop: 1000, usd: 0.25 }, items: [ { name: "De la Calle", cop: 6000, usd: 1.50, isAvailable: true }, { name: "Loco", cop: 14000, usd: 3.50, isAvailable: true }, { name: "Ladra...Pica", cop: 0, usd: 0, isAvailable: true }, { name: "Criollo Dog", cop: 20000, usd: 5.00, isAvailable: true }, { name: "Granjero", cop: 24000, usd: 6.00, isAvailable: true }, { name: "Chorreao", cop: 30000, usd: 7.50, isAvailable: true }, { name: "Sifri Dog", cop: 32000, usd: 8.00, isAvailable: true }, { name: "Boleta", cop: 34000, usd: 8.50, isAvailable: true } ] },
+                papas: { icon: '🍟', takeawayFee: { cop: 500, usd: 0.125 }, items: [ { name: "Tocino y Queso", cop: 10000, usd: 2.50, isAvailable: true }, { name: "Al pimiento", cop: 8000, usd: 2.00, isAvailable: true }, { name: "Rústicas", cop: 6000, usd: 1.50, isAvailable: true }, { name: "Papas Rellenas", cop: 8000, usd: 2.00, isAvailable: true } ] },
+                salchipapa: { icon: '🥔', takeawayFee: { cop: 1000, usd: 0.25 }, items: [ { name: "Salchipapa Clasica", cop: 12000, usd: 3.00, isAvailable: true } ] },
+                bebidas: { icon: '🥤', takeawayFee: { cop: 500, usd: 0.125 }, items: [ { name: "Agua Mineral", cop: 0, usd: 0, isAvailable: true }, { name: "Refrescos", isAvailable: true, variants: [ { variant: "Personal", cop: 4000, usd: 1.00, isAvailable: true }, { variant: "Dos", cop: 6000, usd: 1.50, isAvailable: true }, { variant: "Litro y medio", cop: 8000, usd: 2.00, isAvailable: true } ] }, { name: "Jugos Naturales", isAvailable: true, variants: [] }, { name: "Micheladas", cop: 16000, usd: 4.00, isAvailable: true }, { name: "Cervezas", cop: 0, usd: 0, isAvailable: true } ]},
+                adicionales: [
+                    { name: "TOCINETA", cop: 6000, usd: 1.50, isAvailable: true }, { name: "CEBOLLA", cop: 2000, usd: 0.50, isAvailable: true },
+                    { name: "CHEDDAR", cop: 4000, usd: 1.00, isAvailable: true }, { name: "QUESO LLANERO", cop: 2000, usd: 0.50, isAvailable: true },
+                    { name: "QUESO MOZARELLA", cop: 2000, usd: 0.50, isAvailable: true }, { name: "DORITOS/TAKIS", cop: 2000, usd: 0.50, isAvailable: true },
+                    { name: "CHAMPIÑONES", cop: 4000, usd: 1.00, isAvailable: true }, { name: "MAÍZ", cop: 4000, usd: 1.00, isAvailable: true },
+                    { name: "AGUACATE", cop: 2000, usd: 0.50, isAvailable: true }, { name: "CEBOLLA CARAMELIZADA", cop: 4000, usd: 1.00, isAvailable: true }
+                ]
+            };
+            if (!menu.adicionales) menu.adicionales = [];
+        };
 
         const switchView = viewName => { Object.values(views).forEach(v => v.classList.remove('active')); views[viewName].classList.add('active'); finalizeBtn.style.display = viewName === 'main' ? 'block' : 'none'; };
-        buttons.showMain.addEventListener('click', () => switchView('main')); buttons.showHistory.addEventListener('click', () => switchView('history'));
+        buttons.showMain.addEventListener('click', () => switchView('main'));
+        buttons.showHistory.addEventListener('click', () => switchView('history'));
         buttons.showAdmin.addEventListener('click', () => { if (checkPassword()) { switchView('admin'); populateAdminForms(); } });
         const updateDateTime = () => { orderInfo.datetime.textContent = new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'medium' }); };
         
-        const renderCategoryButtons = () => { categoryContainer.innerHTML = ''; for (const cat in menu) { const btn = document.createElement('button'); btn.dataset.category = cat; btn.innerHTML = `<span class="icon">${menu[cat].icon}</span><span>${cat.charAt(0).toUpperCase() + cat.slice(1)}</span>`; btn.addEventListener('click', () => showProductsModal(cat)); categoryContainer.appendChild(btn); } };
-        getEl('increment-table').addEventListener('click', () => { if (tableNumber < 5) tableNumber++; orderInfo.table.textContent = tableNumber; });
+        const renderCategoryButtons = () => { if (!menu.perros) return; categoryContainer.innerHTML = ''; for (const cat in menu) { if (cat === 'adicionales') continue; const btn = document.createElement('button'); btn.dataset.category = cat; btn.innerHTML = `<span class="icon">${menu[cat].icon}</span><span>${cat.charAt(0).toUpperCase() + cat.slice(1)}</span>`; btn.addEventListener('click', () => showProductsModal(cat)); categoryContainer.appendChild(btn); } };
+        getEl('increment-table').addEventListener('click', () => { if (tableNumber < 50) tableNumber++; orderInfo.table.textContent = tableNumber; });
         getEl('decrement-table').addEventListener('click', () => { if (tableNumber > 1) tableNumber--; orderInfo.table.textContent = tableNumber; });
         
         const renderCurrentOrder = () => {
             currentOrderList.innerHTML = '';
             if (currentOrder.length === 0) { currentOrderList.appendChild(emptyOrderMsg); emptyOrderMsg.style.display = 'block'; return; }
             emptyOrderMsg.style.display = 'none';
+            
+            const deLaCalleCount = currentOrder.filter(item => item.name === SPECIAL_PRODUCT_NAME && item.domicilio).length;
+            const deLaCalleFeeCount = Math.ceil(deLaCalleCount / 2);
+            let deLaCalleFeeApplied = 0;
+
             currentOrder.forEach((item, index) => {
                 let feeHtml = '';
-                if (item.domicilio) {
+                const feeExempt = ['Refrescos', 'Agua Mineral', 'Cervezas'].includes(item.name.split(' (')[0]);
+                if (item.domicilio && item.category && menu[item.category] && menu[item.category].takeawayFee && !feeExempt) {
                     const fee = menu[item.category].takeawayFee;
-                    feeHtml = `<div class="takeaway-fee">+ COP ${fee.cop.toLocaleString()} / $${fee.usd.toFixed(2)} (Envase)</div>`;
+                    if (item.name === SPECIAL_PRODUCT_NAME) {
+                        if (deLaCalleFeeApplied < deLaCalleFeeCount) {
+                            feeHtml = `<div class="takeaway-fee">+ COP ${fee.cop.toLocaleString()} / $${fee.usd.toFixed(2)} (Envase)</div>`;
+                            deLaCalleFeeApplied++;
+                        }
+                    } else {
+                        feeHtml = `<div class="takeaway-fee">+ COP ${fee.cop.toLocaleString()} / $${fee.usd.toFixed(2)} (Envase)</div>`;
+                    }
                 }
+
+                let adicionalesHtml = '';
+                if(item.adicionales && item.adicionales.length > 0) {
+                    adicionalesHtml = '<div class="adicional-list">';
+                    item.adicionales.forEach((ad, adIndex) => {
+                        adicionalesHtml += `<div class="adicional-list-item"><span>+ ${ad.name} (COP ${ad.cop.toLocaleString()})</span><button class="btn-secondary remove-adicional-btn" data-item-index="${index}" data-adicional-index="${adIndex}">x</button></div>`;
+                    });
+                    adicionalesHtml += '</div>';
+                }
+
                 const el = document.createElement('div'); el.className = 'order-item';
-                el.innerHTML = `<div class="item-details"><strong>${item.name}</strong><div class="price">COP ${item.cop.toLocaleString()} / USD $${item.usd.toFixed(2)}</div>${feeHtml}${item.observation ? `<div class="item-observation">Obs: ${item.observation}</div>` : ''}</div><div class="item-actions"><label class="domicilio-check"><input type="checkbox" class="domicilio-checkbox" data-index="${index}" ${item.domicilio ? 'checked' : ''}><span>🥡</span></label><button class="btn-primary add-observation-btn" data-index="${index}">Obs.</button><button class="btn-secondary remove-item-btn" data-index="${index}">X</button></div>`;
+                el.innerHTML = `<div class="item-details"><strong>${item.name}</strong><div class="price">COP ${item.cop.toLocaleString()} / USD $${item.usd.toFixed(2)}</div>${adicionalesHtml}${feeHtml}${item.observation ? `<div class="item-observation">Obs: ${item.observation}</div>` : ''}</div><div class="item-actions"><label class="domicilio-check"><input type="checkbox" class="domicilio-checkbox" data-index="${index}" ${item.domicilio ? 'checked' : ''}><span>🥡</span></label><button class="btn-primary add-adicional-btn" data-index="${index}">Adi.</button><button class="btn-primary add-observation-btn" data-index="${index}">Obs.</button><button class="btn-secondary remove-item-btn" data-index="${index}">X</button></div>`;
                 currentOrderList.appendChild(el);
             });
             queryAll('.remove-item-btn').forEach(b => b.addEventListener('click', (e) => removeItem(e.target.dataset.index)));
             queryAll('.add-observation-btn').forEach(b => b.addEventListener('click', (e) => addObservation(e.target.dataset.index)));
+            queryAll('.add-adicional-btn').forEach(b => b.addEventListener('click', (e) => showAdicionalesModal(e.target.dataset.index)));
+            queryAll('.remove-adicional-btn').forEach(b => b.addEventListener('click', (e) => removeAdicional(e.target.dataset.itemIndex, e.target.dataset.adicionalIndex)));
             queryAll('.domicilio-checkbox').forEach(cb => cb.addEventListener('change', (e) => toggleDomicilio(e.target.dataset.index, e.target.checked)));
         };
 
         const calculateOrderTotal = orderItems => {
-            return orderItems.reduce((acc, item) => {
-                let itemCop = item.cop; let itemUsd = item.usd;
-                if (item.domicilio && item.category && menu[item.category]) {
-                    const fee = menu[item.category].takeawayFee;
-                    itemCop += fee.cop; itemUsd += fee.usd;
+            let totalCop = 0, totalUsd = 0;
+            
+            orderItems.forEach(item => { 
+                totalCop += item.cop; 
+                totalUsd += item.usd;
+                if(item.adicionales) {
+                    item.adicionales.forEach(ad => {
+                        totalCop += ad.cop;
+                        totalUsd += ad.usd;
+                    });
                 }
-                return { cop: acc.cop + itemCop, usd: acc.usd + itemUsd };
-            }, { cop: 0, usd: 0 });
+            });
+            
+            const deLaCalleCount = orderItems.filter(item => item.name === SPECIAL_PRODUCT_NAME && item.domicilio).length;
+            const deLaCalleFeeCount = Math.ceil(deLaCalleCount / 2);
+            if (deLaCalleFeeCount > 0 && menu.perros && menu.perros.takeawayFee) {
+                const fee = menu.perros.takeawayFee;
+                totalCop += deLaCalleFeeCount * fee.cop;
+                totalUsd += deLaCalleFeeCount * fee.usd;
+            }
+
+            orderItems.forEach(item => {
+                const feeExempt = ['Refrescos', 'Agua Mineral', 'Cervezas'].includes(item.name.split(' (')[0]);
+                if (item.name !== SPECIAL_PRODUCT_NAME && item.domicilio && item.category && menu[item.category] && menu[item.category].takeawayFee && !feeExempt) {
+                    const fee = menu[item.category].takeawayFee;
+                    totalCop += fee.cop;
+                    totalUsd += fee.usd;
+                }
+            });
+            
+            if (deliveryCheckbox.checked) {
+                const deliveryCop = parseFloat(deliveryCostInput.value) || 0;
+                totalCop += deliveryCop;
+                totalUsd += deliveryCop / exchangeRate;
+            }
+
+            return { cop: totalCop, usd: totalUsd };
         };
         
-        const addItemToOrder = (product, category) => { currentOrder.push({ ...product, category, id: Date.now(), observation: '', domicilio: false }); renderCurrentOrder(); };
+        const addItemToOrder = (product, category) => { currentOrder.push({ ...product, category, id: Date.now(), observation: '', domicilio: false, adicionales: [] }); renderCurrentOrder(); };
         const removeItem = index => { currentOrder.splice(index, 1); renderCurrentOrder(); };
         const addObservation = index => { const obs = prompt('Añadir observación:', currentOrder[index].observation || ''); if (obs !== null) { currentOrder[index].observation = obs; renderCurrentOrder(); } };
+        const removeAdicional = (itemIndex, adicionalIndex) => { currentOrder[itemIndex].adicionales.splice(adicionalIndex, 1); renderCurrentOrder(); };
         const toggleDomicilio = (index, isChecked) => { currentOrder[index].domicilio = isChecked; renderCurrentOrder(); };
         
         const showProductsModal = category => {
             modalTitle.textContent = category.charAt(0).toUpperCase() + category.slice(1); modalProductList.innerHTML = '';
             menu[category].items.forEach(product => {
                 const el = document.createElement('div'); el.className = 'product-item';
-                if (product.variants && product.variants.length > 0) { el.innerHTML = `<span>${product.name}</span><span>▶</span>`; el.addEventListener('click', () => showVariantModal(category, product)); } 
-                else if (product.variants) { el.innerHTML = `<span>${product.name}</span><span style="font-size: 0.8em; color: #888;">(Sin opciones)</span>`; el.style.cursor = 'not-allowed'; } 
-                else { el.innerHTML = `<span>${product.name}</span><span>COP ${product.cop.toLocaleString()}</span>`; el.addEventListener('click', () => { addItemToOrder(product, category); productsModal.style.display = 'none'; }); }
+                const isAvailable = product.isAvailable !== false; 
+
+                if (!isAvailable) {
+                    el.classList.add('unavailable');
+                    el.innerHTML = `<span>${product.name}</span><span style="font-size:0.8em; text-decoration:none;">(No disponible)</span>`;
+                } else if (product.variants && product.variants.length > 0) { 
+                    el.innerHTML = `<span>${product.name}</span><span>▶</span>`; 
+                    el.addEventListener('click', () => showVariantModal(category, product)); 
+                } else if (product.variants) { 
+                    el.innerHTML = `<span>${product.name}</span><span style="font-size: 0.8em; color: #888;">(Sin opciones)</span>`; 
+                    el.style.cursor = 'not-allowed'; 
+                } else { 
+                    el.innerHTML = `<span>${product.name}</span><span>COP ${product.cop.toLocaleString()}</span>`; 
+                    el.addEventListener('click', () => { addItemToOrder(product, category); productsModal.style.display = 'none'; }); 
+                }
                 modalProductList.appendChild(el);
             });
             productsModal.style.display = 'block';
+        };
+
+        const showAdicionalesModal = (itemIndex) => {
+            modalAdicionalesList.innerHTML = '';
+            menu.adicionales.forEach(ad => {
+                const el = document.createElement('div');
+                el.className = 'product-item';
+                if (!ad.isAvailable) {
+                    el.classList.add('unavailable');
+                    el.innerHTML = `<span>${ad.name}</span><span style="font-size:0.8em; text-decoration:none;">(No disponible)</span>`;
+                } else {
+                    el.innerHTML = `<span>${ad.name}</span><span>COP ${ad.cop.toLocaleString()}</span>`;
+                    el.addEventListener('click', () => {
+                        currentOrder[itemIndex].adicionales.push(ad);
+                        adicionalesModal.style.display = 'none';
+                        renderCurrentOrder();
+                    });
+                }
+                modalAdicionalesList.appendChild(el);
+            });
+            adicionalesModal.style.display = 'block';
         };
 
         const showVariantModal = (category, product) => {
             modalTitle.textContent = `${category} - ${product.name}`; modalProductList.innerHTML = '';
             product.variants.forEach(variant => {
                 const el = document.createElement('div'); el.className = 'product-item';
-                el.innerHTML = `<span>${variant.variant}</span><span>COP ${variant.cop.toLocaleString()}</span>`;
-                el.addEventListener('click', () => { const item = { name: `${product.name} (${variant.variant})`, cop: variant.cop, usd: variant.usd }; addItemToOrder(item, category); productsModal.style.display = 'none'; });
+                const isAvailable = variant.isAvailable !== false;
+
+                if (isAvailable) {
+                    el.innerHTML = `<span>${variant.variant}</span><span>COP ${variant.cop.toLocaleString()}</span>`;
+                    el.addEventListener('click', () => { const item = { name: `${product.name} (${variant.variant})`, cop: variant.cop, usd: variant.usd }; addItemToOrder(item, category); productsModal.style.display = 'none'; });
+                } else {
+                    el.classList.add('unavailable');
+                    el.innerHTML = `<span>${variant.variant}</span><span style="font-size:0.8em; text-decoration:none;">(No disponible)</span>`;
+                }
                 modalProductList.appendChild(el);
             });
         };
         
         modalCloseBtn.addEventListener('click', () => productsModal.style.display = 'none');
-        window.addEventListener('click', e => { if (e.target == productsModal || e.target == detailsModal) { productsModal.style.display = 'none'; detailsModal.style.display = 'none'; } });
-        const resetOrder = () => { currentOrder = []; tableNumber = 1; orderInfo.table.textContent = 1; orderCounter++; orderInfo.number.textContent = orderCounter.toString().padStart(4, '0'); renderCurrentOrder(); };
+        adicionalesModalCloseBtn.addEventListener('click', () => adicionalesModal.style.display = 'none');
+        window.addEventListener('click', e => { if (e.target == productsModal || e.target == detailsModal || e.target == adicionalesModal) { productsModal.style.display = 'none'; detailsModal.style.display = 'none'; adicionalesModal.style.display = 'none'; } });
         
-        finalizeBtn.addEventListener('click', () => { if (currentOrder.length === 0) return alert('No hay productos.'); if (confirm('¿Finalizar orden?')) { const now = new Date(); const total = calculateOrderTotal(currentOrder); orderHistory.unshift({ number: orderCounter, datetime: now, table: tableNumber, items: [...currentOrder], total, isOut: false }); renderHistory(); resetOrder(); alert('¡Orden finalizada!'); } });
+        const startNewOrder = () => {
+            currentOrder = []; editingOrderIndex = null; tableNumber = 1; clientNameInput.value = '';
+            deliveryCheckbox.checked = false; deliveryCostInput.value = ''; deliveryAddressInput.value = '';
+            deliveryInputs.style.display = 'none';
+            orderInfo.table.textContent = tableNumber;
+            orderInfo.number.textContent = orderCounter.toString().padStart(4, '0');
+            finalizeBtn.textContent = "FINALIZAR ORDEN"; newOrderBtn.style.display = 'none';
+            renderCurrentOrder();
+        };
+
+        finalizeBtn.addEventListener('click', () => {
+            if (currentOrder.length === 0) return alert('No hay productos en la orden.');
+            const confirmationMessage = editingOrderIndex !== null ? '¿Actualizar esta orden en el historial?' : '¿Finalizar la orden?';
+            if (confirm(confirmationMessage)) {
+                const now = new Date();
+                const total = calculateOrderTotal(currentOrder);
+                const clientName = clientNameInput.value.trim();
+                const isDelivery = deliveryCheckbox.checked;
+                const deliveryCost = isDelivery ? (parseFloat(deliveryCostInput.value) || 0) : 0;
+                const deliveryAddress = isDelivery ? deliveryAddressInput.value.trim() : '';
+
+                const orderData = {
+                    datetime: now, table: tableNumber, clientName, items: [...currentOrder],
+                    total, isOut: false, isDelivery, deliveryCost, deliveryAddress
+                };
+
+                if (editingOrderIndex !== null) {
+                    orderHistory[editingOrderIndex] = { ...orderHistory[editingOrderIndex], ...orderData };
+                } else {
+                    orderHistory.unshift({ number: orderCounter, ...orderData });
+                    orderCounter++;
+                }
+                saveState();
+                startNewOrder();
+            }
+        });
         
         const renderHistory = () => {
             historyTableBody.innerHTML = '';
             orderHistory.forEach((order, index) => {
                 const row = document.createElement('tr');
-                const state = order.isOut ? 'finalizado' : 'pendiente';
+                const stateClass = order.isOut ? 'finalizado' : 'pendiente';
                 const stateText = order.isOut ? 'Finalizado' : 'Por Entregar';
                 row.innerHTML = `
                     <td>
@@ -308,32 +587,90 @@
                         <div class="order-time">${order.datetime.toLocaleTimeString('es-CO')}</div>
                         <div class="order-actions">
                             <button class="btn-primary view-details-btn" data-index="${index}">Ver</button>
-                            <button class="btn-primary send-whatsapp-btn" data-index="${index}" style="background-color: #25D366;"><svg class="whatsapp-icon" viewBox="0 0 448 512"><path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zM223.9 439.6c-33.8 0-66.3-13.1-90.4-36.4L114.9 387l-24.2 6.3 6.5-23.5-3.7-2.1c-24.4-42.6-37.8-93.5-37.8-146.4 0-109.4 88.8-198.2 198.2-198.2 54.7 0 106.1 21.3 145.4 58.7 39.4 37.4 61.4 89.2 61.4 143.2 0 109.4-88.8 198.2-198.2 198.2zM332.8 290c-5.2-2.6-30.8-15.2-35.6-16.9-4.8-1.7-8.3-2.6-11.8 2.6-3.5 5.2-13.5 16.9-16.5 20.4-3.1 3.5-6.1 3.9-11.3 1.3-5.2-2.6-22-8.1-41.9-25.8-15.5-14-26-31.3-29.1-36.5-3.1-5.2-.3-8.1 2.4-10.7 2.3-2.3 5.2-6.1 7.8-9.1 2.6-3.1 3.5-5.2 5.2-8.6 1.7-3.5.8-6.5-1.7-9.1-2.6-2.6-11.8-28.5-16.1-39-4.3-10.5-8.6-9.1-11.8-9.1-3.1 0-6.8-.4-10.3-.4-3.5 0-9.1 1.3-13.8 6.5-4.8 5.2-18.4 17.9-18.4 43.5 0 25.6 18.9 50.4 21.5 53.9 2.6 3.5 37.2 56.4 90.4 79.4 12.6 5.4 22.9 8.6 30.5 11.2 11.4 3.9 21.8 3.3 29.9 2 8.9-1.3 28.5-11.7 32.5-22.9 4-11.2 4-20.8 2.8-22.9-1.2-2.1-4.7-3.4-9.9-6z"/></svg></button>
+                            <button class="btn-primary edit-order-btn" data-index="${index}">Editar</button>
+                            <button class="btn-primary send-whatsapp-btn" data-index="${index}" style="background-color: #25D366;"><svg class="whatsapp-icon" viewBox="0 0 448 512"><path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zM223.9 439.6c-33.8 0-66.3-13.1-90.4-36.4L114.9 387l-24.2 6.3 6.5-23.5-3.7-2.1c-24.4-42.6-37.8-93.5-37.8-146.4 0-109.4 88.8-198.2 198.2-198.2 54.7 0 106.1 21.3 145.4 58.7 39.4 37.4 61.4 89.2 61.4 143.2 0 109.4-88.8 198.2-198.2 198.2zM332.8 290c-5.2-2.6-30.8-15.2-35.6-16.9-4.8-1.7-8.3-2.6-11.8 2.6-3.5 5.2-13.5 16.9-16.5 20.4-3.1 3.5-6.1 3.9-11.3 1.3-5.2-2.6-22-8.1-41.9-25.8-15.5-14-26-31.3-29.1-36.5-3.1-5.2-.3-8.1 2.4-10.7 2.3-2.3 5.2-6.1 7.8-9.1 2.6-3.1 3.5-5.2 5.2-8.6 1.7-3.5.8-6.5-1.7-9.1-2.2-2.6-11.8-28.5-16.1-39-4.3-10.5-8.6-9.1-11.8-9.1-3.1 0-6.8-.4-10.3-.4-3.5 0-9.1 1.3-13.8 6.5-4.8 5.2-18.4 17.9-18.4 43.5 0 25.6 18.9 50.4 21.5 53.9 2.6 3.5 37.2 56.4 90.4 79.4 12.6 5.4 22.9 8.6 30.5 11.2 11.4 3.9 21.8 3.3 29.9 2 8.9-1.3 28.5-11.7 32.5-22.9 4-11.2 4-20.8 2.8-22.9-1.2-2.1-4.7-3.4-9.9-6z"/></svg></button>
                             <button class="btn-secondary delete-order-btn" data-index="${index}">X</button>
                         </div>
                     </td>
-                    <td>${order.table}</td>
+                    <td>${order.clientName || `Mesa ${order.table}`}</td>
                     <td><div class="total-price">COP ${order.total.cop.toLocaleString()}</div><div class="total-price">USD $${order.total.usd.toFixed(2)}</div></td>
-                    <td><div class="toggle-switch" data-index="${index}" data-state="${state}"><span class="knob"></span><span class="text">${stateText}</span></div></td>`;
+                    <td><button class="state-btn ${stateClass}" data-index="${index}">${stateText}</button></td>`;
                 historyTableBody.appendChild(row);
             });
-            queryAll('.view-details-btn, .send-whatsapp-btn, .delete-order-btn, .toggle-switch').forEach(b => b.addEventListener('click', e => {
-                const target = e.target.closest('[data-index]');
-                const idx = target.dataset.index;
-                if (target.classList.contains('view-details-btn')) showOrderDetails(idx);
-                if (target.classList.contains('send-whatsapp-btn')) sendWhatsApp(idx);
-                if (target.classList.contains('delete-order-btn')) deleteOrder(idx);
-                if (target.classList.contains('toggle-switch')) toggleOrderOut(idx);
-            }));
         };
-        const showOrderDetails = index => { const order = orderHistory[index]; const total = calculateOrderTotal(order.items); detailsContent.innerHTML = `<p><strong>Pedido:</strong> ${order.number}</p><p><strong>Hora:</strong> ${order.datetime.toLocaleString('es-CO')}</p><p><strong>Mesa:</strong> ${order.table}</p><hr><h4>Productos:</h4><ul>${order.items.map(i => `<li><strong>${i.name}</strong>${i.domicilio ? ' (Para llevar)' : ''}${i.observation ? `<br><em>Obs: ${i.observation}</em>` : ''}</li>`).join('')}</ul><hr><p><strong>Total: COP ${total.cop.toLocaleString()} / USD $${total.usd.toFixed(2)}</strong></p>`; detailsModal.style.display = 'block'; downloadInvoiceBtn.dataset.index = index; };
-        detailsModalCloseBtn.addEventListener('click', () => detailsModal.style.display = 'none');
-        const toggleOrderOut = index => { orderHistory[index].isOut = !orderHistory[index].isOut; renderHistory(); };
-        const deleteOrder = index => { if (checkPassword()) { if(confirm('¿Eliminar este pedido?')) { orderHistory.splice(index, 1); renderHistory(); } } };
 
-        const sendWhatsApp = index => { const order = orderHistory[index]; let msg = `*NUEVO PEDIDO: ${order.number}*\nMesa: ${order.table}\n\n----------------------------\n`; order.items.forEach(i => { msg += `*• ${i.name.toUpperCase()}*\n`; if (i.observation) msg += `  *OBS:* ${i.observation}\n`; if (i.domicilio) msg += `  *‼️ PARA LLEVAR ‼️*\n`; msg += `\n`; }); const phone = "584143500422"; window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank'); };
+        historyTableBody.addEventListener('click', (e) => {
+            const target = e.target.closest('[data-index]');
+            if (!target) return;
+            const idx = target.dataset.index;
+            if (target.classList.contains('view-details-btn')) showOrderDetails(idx);
+            else if (target.classList.contains('edit-order-btn')) loadOrderForEditing(idx);
+            else if (target.classList.contains('send-whatsapp-btn')) sendWhatsApp(idx);
+            else if (target.classList.contains('delete-order-btn')) deleteOrder(idx);
+            else if (target.classList.contains('state-btn')) toggleOrderOut(idx);
+        });
+
+        const loadOrderForEditing = index => {
+            const order = orderHistory[index]; if (!order) return;
+            editingOrderIndex = index;
+            currentOrder = JSON.parse(JSON.stringify(order.items));
+            tableNumber = order.table; clientNameInput.value = order.clientName || '';
+            deliveryCheckbox.checked = order.isDelivery;
+            deliveryCostInput.value = order.deliveryCost || '';
+            deliveryAddressInput.value = order.deliveryAddress || '';
+            deliveryInputs.style.display = order.isDelivery ? 'grid' : 'none';
+            orderInfo.table.textContent = tableNumber;
+            orderInfo.number.textContent = order.number.toString().padStart(4, '0');
+            finalizeBtn.textContent = "ACTUALIZAR ORDEN"; newOrderBtn.style.display = 'inline-block';
+            renderCurrentOrder();
+            switchView('main');
+        };
+
+        const showOrderDetails = index => {
+            const order = orderHistory[index];
+            let deliveryDetails = '';
+            if (order.isDelivery) {
+                deliveryDetails = `<p><strong>Costo Domicilio:</strong> COP ${order.deliveryCost.toLocaleString()}</p><p><strong>Dirección:</strong> ${order.deliveryAddress}</p>`;
+            }
+            
+            const itemsHtml = order.items.map(i => {
+                let adicionalesHtml = '';
+                if(i.adicionales && i.adicionales.length > 0) {
+                    adicionalesHtml = `<ul>${i.adicionales.map(ad => `<li>+ ${ad.name}</li>`).join('')}</ul>`;
+                }
+                return `<li><strong>${i.name}</strong>${i.domicilio ? ' (Para llevar)' : ''}${adicionalesHtml}${i.observation ? `<br><em>Obs: ${i.observation}</em>` : ''}</li>`;
+            }).join('');
+            
+            detailsContent.innerHTML = `<p><strong>Pedido:</strong> ${order.number}</p><p><strong>Hora:</strong> ${order.datetime.toLocaleString('es-CO')}</p><p><strong>Cliente:</strong> ${order.clientName || `Mesa ${order.table}`}</p>${deliveryDetails}<hr><h4>Productos:</h4><ul>${itemsHtml}</ul><hr><p><strong>Total: COP ${order.total.cop.toLocaleString()} / USD $${order.total.usd.toFixed(2)}</strong></p>`;
+            detailsModal.style.display = 'block';
+            downloadInvoiceBtn.dataset.index = index;
+        };
+
+        detailsModalCloseBtn.addEventListener('click', () => detailsModal.style.display = 'none');
+        const toggleOrderOut = index => { orderHistory[index].isOut = !orderHistory[index].isOut; saveState(); };
+        const deleteOrder = index => { if (confirm('¿Estás seguro de que quieres eliminar este pedido?')) { orderHistory.splice(index, 1); saveState(); } };
+
+        const sendWhatsApp = index => { 
+            const order = orderHistory[index]; 
+            let msg = `*NUEVO PEDIDO: ${order.number}*\n*Cliente:* ${order.clientName || `Mesa ${order.table}`}\n\n`; 
+            if (order.isDelivery) { msg += `*‼️ PEDIDO PARA DOMICILIO ‼️*\n*Dirección:* ${order.deliveryAddress}\n*Costo Domicilio:* COP ${order.deliveryCost.toLocaleString()}\n\n`; } 
+            msg += `----------------------------\n`; 
+            order.items.forEach(i => { 
+                msg += `*• ${i.name.toUpperCase()}*\n`; 
+                if (i.adicionales && i.adicionales.length > 0) {
+                    i.adicionales.forEach(ad => {
+                        msg += `  *ADICIONAL:* ${ad.name}\n`;
+                    });
+                }
+                if (i.observation) msg += `  *OBS:* ${i.observation}\n`; 
+                if (i.domicilio) msg += `  *📦 PARA LLEVAR 📦*\n`; 
+                msg += `\n`; 
+            }); 
+            const phone = "584143500422"; 
+            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank'); 
+        };
         
-        clearHistoryBtn.addEventListener('click', () => { if(checkPassword()) { if(confirm('¿Borrar historial del día?')) { orderHistory = []; renderHistory(); } } });
+        clearHistoryBtn.addEventListener('click', () => { if (confirm('¿Estás seguro de borrar el historial del día?')) { orderHistory = []; saveState(); } });
         
         downloadPdfBtn.addEventListener('click', () => {
             if (orderHistory.length === 0) return alert('El historial está vacío.');
@@ -342,25 +679,102 @@
             const headStyles = { fillColor: gray(220), textColor: gray(30), lineColor: gray(150), lineWidth: 0.1 };
             const bodyStyles = { textColor: gray(50), lineColor: gray(200), lineWidth: 0.1 };
 
+            const logoWidth = 80;
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const x = (pageWidth - logoWidth) / 2;
+            doc.addImage(logoBase64, 'PNG', x, 10, logoWidth, 25);
+            
             doc.setTextColor(...gray(30));
-            doc.text("Historial de Pedidos del día LA PERRERÍA", 14, 16);
+            doc.setFontSize(16);
+            doc.text("Historial de Pedidos del Día", 105, 40, { align: 'center' });
             
-            const orderRows = orderHistory.map(o => { const timeAndDate = `${o.datetime.toLocaleTimeString('es-CO')}\n${o.datetime.toLocaleDateString('es-CO')}`; const details = o.items.map(i => `${i.name}${i.domicilio ? ` (+ Envase)`:''} (COP ${i.cop.toLocaleString()})`).join('\n'); const total = `COP ${o.total.cop.toLocaleString()}\nUSD $${o.total.usd.toFixed(2)}`; return [o.number, timeAndDate, o.table, details, total]; });
-            doc.autoTable({ head: [["N° Pedido", "Hora / Fecha", "Mesa", "Detalles", "Total (COP/USD)"]], body: orderRows, startY: 20, headStyles, styles: bodyStyles });
-            let finalY = doc.lastAutoTable.finalY || 20;
-            
+            const orderRows = orderHistory.map(o => {
+                const timeAndDate = `${o.datetime.toLocaleTimeString('es-CO')}\n${o.datetime.toLocaleDateString('es-CO')}`;
+                
+                const deLaCalleTakeawayItems = o.items.filter(item => item.name === SPECIAL_PRODUCT_NAME && item.domicilio);
+                const deLaCalleFeeCount = deLaCalleTakeawayItems.length > 0 ? Math.ceil(deLaCalleTakeawayItems.length / 2) : 0;
+                let deLaCalleFeesApplied = 0;
+
+                let details = o.items.map(item => {
+                    let descriptionParts = [`- ${item.name}`];
+                    if (item.adicionales && item.adicionales.length > 0) {
+                        descriptionParts.push(...item.adicionales.map(ad => `  + ${ad.name} (COP ${ad.cop.toLocaleString()})`));
+                    }
+                    const feeExempt = ['Refrescos', 'Agua Mineral', 'Cervezas'].includes(item.name.split(' (')[0]);
+                    if (item.domicilio && !feeExempt) {
+                        let fee = null;
+                        if (item.name === SPECIAL_PRODUCT_NAME) {
+                            if (deLaCalleFeesApplied < deLaCalleFeeCount && menu.perros && menu.perros.takeawayFee) {
+                                fee = menu.perros.takeawayFee;
+                                deLaCalleFeesApplied++;
+                            }
+                        } else if (item.category && menu[item.category] && menu[item.category].takeawayFee) {
+                            fee = menu[item.category].takeawayFee;
+                        }
+
+                        if (fee) {
+                            descriptionParts.push(`  + Envase (COP ${fee.cop.toLocaleString()})`);
+                        }
+                    }
+                    if (item.observation) {
+                        descriptionParts.push(`  (Obs: ${item.observation})`);
+                    }
+                    return descriptionParts.join('\n');
+                }).join('\n\n');
+
+                if (o.isDelivery) {
+                    details += `\n\nDomicilio: ${o.deliveryAddress}\nCosto: COP ${o.deliveryCost.toLocaleString()}`;
+                }
+                const total = `COP ${o.total.cop.toLocaleString()}\nUSD $${o.total.usd.toFixed(2)}`;
+                return [o.number, timeAndDate, o.clientName || `Mesa ${o.table}`, details, total];
+            });
+            doc.autoTable({ head: [["N° Pedido", "Hora / Fecha", "Cliente/Mesa", "Detalles", "Total (COP/USD)"]], body: orderRows, startY: 50, headStyles, styles: bodyStyles });
+            let finalY = doc.lastAutoTable.finalY || 50;
+
             const salesSummary = {};
-            orderHistory.forEach(o => o.items.forEach(i => { salesSummary[i.name] = (salesSummary[i.name] || 0) + 1; }));
+            orderHistory.forEach(o => o.items.forEach(i => { 
+                const baseName = i.name.split(' (')[0];
+                salesSummary[baseName] = (salesSummary[baseName] || 0) + 1; 
+            }));
             const summaryRows = Object.entries(salesSummary).map(([name, qty]) => [name, qty]);
             doc.autoTable({ head: [["Producto Vendido", "Cantidad"]], body: summaryRows, startY: finalY + 10, pageBreak: 'avoid', headStyles, styles: bodyStyles });
             finalY = doc.lastAutoTable.finalY;
 
             const takeawaySummary = {};
-            for (const cat in menu) { takeawaySummary[cat] = { count: 0, totalCop: 0, totalUsd: 0 }; }
-            orderHistory.forEach(o => o.items.forEach(i => { if (i.domicilio && i.category && menu[i.category]) { const fee = menu[i.category].takeawayFee; takeawaySummary[i.category].count++; takeawaySummary[i.category].totalCop += fee.cop; takeawaySummary[i.category].totalUsd += fee.usd; } }));
+            for (const cat in menu) { if (cat !== 'adicionales' && menu[cat].takeawayFee) { takeawaySummary[cat] = { count: 0, totalCop: 0, totalUsd: 0 }; } }
+
+            orderHistory.forEach(o => {
+                const deLaCalleCount = o.items.filter(i => i.name === SPECIAL_PRODUCT_NAME && i.domicilio).length;
+                const deLaCalleFeeCount = Math.ceil(deLaCalleCount / 2);
+                if (deLaCalleFeeCount > 0 && menu.perros && menu.perros.takeawayFee) {
+                    const fee = menu.perros.takeawayFee;
+                    takeawaySummary.perros.count += deLaCalleFeeCount;
+                    takeawaySummary.perros.totalCop += deLaCalleFeeCount * fee.cop;
+                    takeawaySummary.perros.totalUsd += deLaCalleFeeCount * fee.usd;
+                }
+                o.items.forEach(i => {
+                    const feeExempt = ['Refrescos', 'Agua Mineral', 'Cervezas'].includes(i.name.split(' (')[0]);
+                    if (i.name !== SPECIAL_PRODUCT_NAME && i.domicilio && i.category && menu[i.category] && menu[i.category].takeawayFee && !feeExempt) {
+                        const fee = menu[i.category].takeawayFee;
+                        if (takeawaySummary[i.category]) {
+                            takeawaySummary[i.category].count++;
+                            takeawaySummary[i.category].totalCop += fee.cop;
+                            takeawaySummary[i.category].totalUsd += fee.usd;
+                        }
+                    }
+                });
+            });
+
             const summaryTakeawayRows = Object.entries(takeawaySummary).filter(([_, data]) => data.count > 0).map(([cat, data]) => { const totalText = `COP ${data.totalCop.toLocaleString()}\nUSD $${data.totalUsd.toFixed(2)}`; return [cat.charAt(0).toUpperCase() + cat.slice(1), data.count, totalText]; });
             if(summaryTakeawayRows.length > 0) {
                 doc.autoTable({ head: [["Categoría", "Envases Usados", "Total Envases (COP/USD)"]], body: summaryTakeawayRows, startY: finalY + 10, pageBreak: 'avoid', headStyles, styles: bodyStyles });
+                finalY = doc.lastAutoTable.finalY;
+            }
+
+            const deliverySummary = orderHistory.reduce((acc, order) => { if(order.isDelivery && order.deliveryCost > 0) { acc.count++; acc.totalCop += order.deliveryCost; acc.totalUsd += order.deliveryCost / exchangeRate; } return acc; }, { count: 0, totalCop: 0, totalUsd: 0 });
+            if (deliverySummary.count > 0) {
+                const deliveryRows = [[deliverySummary.count, `COP ${deliverySummary.totalCop.toLocaleString()}\nUSD $${deliverySummary.totalUsd.toFixed(2)}`]];
+                doc.autoTable({ head: [["Total Domicilios", "Ingresos (COP/USD)"]], body: deliveryRows, startY: finalY + 10, pageBreak: 'avoid', headStyles, styles: bodyStyles });
                 finalY = doc.lastAutoTable.finalY;
             }
 
@@ -377,36 +791,79 @@
             if (!order) return;
             const { jsPDF } = window.jspdf; const doc = new jsPDF();
             
-            doc.setFontSize(22); doc.text("LA PERRERÍA", 105, 20, { align: 'center' });
-            doc.setFontSize(14); doc.text("Detalle de Consumo", 105, 28, { align: 'center' });
+            const logoWidth = 80;
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const x = (pageWidth - logoWidth) / 2;
+            doc.addImage(logoBase64, 'PNG', x, 10, logoWidth, 25);
+
+            doc.setFontSize(14); doc.text("Detalle de Consumo", 105, 40, { align: 'center' });
             
             doc.setFontSize(10);
-            doc.text(`Pedido N°: ${order.number}`, 14, 40);
-            doc.text(`Fecha: ${order.datetime.toLocaleString('es-CO')}`, 14, 45);
-            doc.text(`Mesa: ${order.table}`, 14, 50);
-            doc.line(14, 55, 196, 55);
+            doc.text(`Pedido N°: ${order.number}`, 14, 50);
+            doc.text(`Fecha: ${order.datetime.toLocaleString('es-CO')}`, 14, 55);
+            doc.text(`Cliente: ${order.clientName || `Mesa ${order.table}`}`, 14, 60);
+            if(order.isDelivery) doc.text(`Dirección: ${order.deliveryAddress}`, 14, 65);
+            doc.line(14, 70, 196, 70);
 
             const tableRows = [];
+            const deLaCalleTakeawayItems = order.items.filter(item => item.name === SPECIAL_PRODUCT_NAME && item.domicilio);
+            const deLaCalleFeeCount = deLaCalleTakeawayItems.length > 0 ? Math.ceil(deLaCalleTakeawayItems.length / 2) : 0;
+            let deLaCalleFeesApplied = 0;
+
             order.items.forEach(item => {
-                tableRows.push(['1', item.name, `COP ${item.cop.toLocaleString()}`, `COP ${item.cop.toLocaleString()}`]);
-                if (item.domicilio && item.category && menu[item.category]) {
-                    const fee = menu[item.category].takeawayFee;
-                    tableRows.push(['', '  + Cargo Envase', `COP ${fee.cop.toLocaleString()}`, `COP ${fee.cop.toLocaleString()}`]);
+                let itemTotalCop = item.cop;
+                let descriptionParts = [item.name];
+
+                if (item.adicionales && item.adicionales.length > 0) {
+                    item.adicionales.forEach(ad => {
+                        itemTotalCop += ad.cop;
+                        descriptionParts.push(`  + ${ad.name} (COP ${ad.cop.toLocaleString()})`);
+                    });
                 }
+
+                const feeExempt = ['Refrescos', 'Agua Mineral', 'Cervezas'].includes(item.name.split(' (')[0]);
+                if (item.domicilio && !feeExempt) {
+                    let fee = null;
+                    if (item.name === SPECIAL_PRODUCT_NAME) {
+                        if (deLaCalleFeesApplied < deLaCalleFeeCount && menu.perros && menu.perros.takeawayFee) {
+                            fee = menu.perros.takeawayFee;
+                            deLaCalleFeesApplied++;
+                        }
+                    } else if (item.category && menu[item.category] && menu[item.category].takeawayFee) {
+                        fee = menu[item.category].takeawayFee;
+                    }
+
+                    if (fee) {
+                        itemTotalCop += fee.cop;
+                        descriptionParts.push(`  + Cargo Envase (COP ${fee.cop.toLocaleString()})`);
+                    }
+                }
+                
+                if (item.observation) {
+                    descriptionParts.push(`  Obs: ${item.observation}`);
+                }
+
+                const finalDescription = descriptionParts.join('\n');
+                tableRows.push(['1', finalDescription, `COP ${item.cop.toLocaleString()}`, `COP ${itemTotalCop.toLocaleString()}`]);
             });
-            doc.autoTable({ head: [['Cant.', 'Descripción', 'Precio Unit.', 'Total']], body: tableRows, startY: 60, headStyles: { fillColor: [50, 50, 50] }, styles: { fontSize: 9 } });
+
+            if (order.isDelivery && order.deliveryCost > 0) {
+                tableRows.push(['', 'Costo Domicilio', '', `COP ${order.deliveryCost.toLocaleString()}`]);
+            }
+
+            doc.autoTable({ head: [['Cant.', 'Descripción', 'Precio Unit.', 'Total']], body: tableRows, startY: 75, headStyles: { fillColor: [50, 50, 50] }, styles: { fontSize: 9, cellPadding: 2 }, bodyStyles: { valign: 'middle' } });
 
             let finalY = doc.lastAutoTable.finalY + 15;
             const rightAlign = doc.internal.pageSize.width - 14;
-            const total = calculateOrderTotal(order.items);
             
             doc.setFontSize(12);
             doc.setFont('helvetica', 'bold');
             doc.text(`TOTAL:`, rightAlign, finalY, { align: 'right' });
             finalY += 7;
-            doc.text(`COP ${total.cop.toLocaleString()}`, rightAlign, finalY, { align: 'right' });
+            doc.setFont('helvetica', 'normal');
+            doc.text(`COP ${order.total.cop.toLocaleString()}`, rightAlign, finalY, { align: 'right' });
             finalY += 7;
-            doc.text(`USD $${total.usd.toFixed(2)}`, rightAlign, finalY, { align: 'right' });
+            doc.text(`USD $${order.total.usd.toFixed(2)}`, rightAlign, finalY, { align: 'right' });
 
             finalY += 15;
             doc.setFontSize(10);
@@ -417,15 +874,18 @@
         };
         downloadInvoiceBtn.addEventListener('click', e => { const index = e.target.dataset.index; if (index) generateInvoicePdf(index); });
 
-        const checkPassword = () => { const pass = prompt("Contraseña de administrador:"); if (pass !== ADMIN_PASSWORD) { alert("Contraseña incorrecta."); return false; } return true; };
+        const checkPassword = () => { const pass = prompt("Ingrese la contraseña de administrador:"); if (pass !== ADMIN_PASSWORD) { alert("Contraseña incorrecta."); return false; } return true; };
         
         // Admin Logic
         const populateAdminForms = () => {
+            if (!menu.perros) return; // Don't run if menu is not loaded
             getEl('set-order-number-input').value = orderCounter;
+            getEl('exchange-rate-input').value = exchangeRate;
             editProductSelect.innerHTML = ''; addCategorySelect.innerHTML = ''; deleteProductSelect.innerHTML = ''; takeawayFeeEditor.innerHTML = '';
             for (const cat in menu) {
+                if(cat === 'adicionales') continue;
                 const catOpt = document.createElement('option'); catOpt.value = cat; catOpt.textContent = cat.charAt(0).toUpperCase() + cat.slice(1); addCategorySelect.appendChild(catOpt);
-                const fee = menu[cat].takeawayFee;
+                const fee = menu[cat].takeawayFee || { cop: 0, usd: 0 };
                 const feeEl = document.createElement('div'); feeEl.className = 'fee-item';
                 feeEl.innerHTML = `<label style="flex-basis: 100px;">${cat.charAt(0).toUpperCase() + cat.slice(1)}:</label><input type="number" data-cat="${cat}" data-currency="cop" value="${fee.cop}" placeholder="COP"><input type="number" data-cat="${cat}" data-currency="usd" value="${fee.usd}" placeholder="USD" step="0.01">`;
                 takeawayFeeEditor.appendChild(feeEl);
@@ -434,25 +894,192 @@
                     editProductSelect.appendChild(itemOpt.cloneNode(true)); deleteProductSelect.appendChild(itemOpt);
                 });
             }
+            renderAdicionalesAdmin();
             handleProductSelectionChange();
         };
 
-        const handleProductSelectionChange = () => { const [cat, index] = editProductSelect.value.split(','); const product = menu[cat]?.items[index]; if (!product) return; editProductName.value = product.name; if (product.variants) { priceEditorNormal.style.display = 'none'; variantEditor.style.display = 'block'; renderVariantEditor(cat, index); } else { priceEditorNormal.style.display = 'block'; variantEditor.style.display = 'none'; } };
-        editProductSelect.addEventListener('change', handleProductSelectionChange);
-        saveOrderNumberBtn.addEventListener('click', () => { if (!checkPassword()) return; const newOrderNum = parseInt(getEl('set-order-number-input').value); if (!isNaN(newOrderNum) && newOrderNum > 0) { orderCounter = newOrderNum; orderInfo.number.textContent = orderCounter.toString().padStart(4, '0'); alert(`Próximo número de orden establecido en ${orderCounter}.`); } else { alert('Por favor, ingrese un número válido.'); } });
-        saveNameBtn.addEventListener('click', () => { if (!checkPassword()) return; const [cat, index] = editProductSelect.value.split(','); const newName = editProductName.value.trim(); if (newName) { menu[cat].items[index].name = newName; alert('Nombre actualizado.'); populateAdminForms(); renderCategoryButtons(); } else { alert('El nombre no puede estar vacío.'); } });
-        const renderVariantEditor = (cat, prodIndex) => { variantList.innerHTML = ''; const product = menu[cat].items[prodIndex]; product.variants.forEach((v, vIndex) => { const el = document.createElement('div'); el.className = 'variant-item'; el.innerHTML = `<span>${v.variant}</span><span>COP ${v.cop}</span><button class="btn-secondary delete-variant-btn" data-cat="${cat}" data-prod-index="${prodIndex}" data-variant-index="${vIndex}">X</button>`; variantList.appendChild(el); }); queryAll('.delete-variant-btn').forEach(b => b.addEventListener('click', e => deleteVariant(e.target.dataset))); };
-        getEl('add-variant-btn').addEventListener('click', () => { const [cat, prodIndex] = editProductSelect.value.split(','); const name = getEl('add-variant-name').value.trim(), cop = parseFloat(getEl('add-variant-cop').value), usd = parseFloat(getEl('add-variant-usd').value); if (name && !isNaN(cop) && !isNaN(usd)) { menu[cat].items[prodIndex].variants.push({ variant: name, cop, usd }); renderVariantEditor(cat, prodIndex); getEl('add-variant-name').value = ''; getEl('add-variant-cop').value = ''; getEl('add-variant-usd').value = ''; } });
-        const deleteVariant = ({ cat, prodIndex, variantIndex }) => { if (confirm('¿Eliminar variante?')) { menu[cat].items[prodIndex].variants.splice(variantIndex, 1); renderVariantEditor(cat, prodIndex); } };
-        savePriceBtn.addEventListener('click', () => { if (checkPassword()) { const [cat, index] = editProductSelect.value.split(','); const newCop = parseFloat(editPriceCop.value), newUsd = parseFloat(editPriceUsd.value); if (!isNaN(newCop) && !isNaN(newUsd)) { menu[cat].items[index].cop = newCop; menu[cat].items[index].usd = newUsd; alert('Precio actualizado.'); editPriceCop.value = ''; editPriceUsd.value = ''; } else { alert('Precios inválidos.'); } } });
-        saveTakeawayFeesBtn.addEventListener('click', () => { if (!checkPassword()) return; queryAll('#takeaway-fee-editor input').forEach(input => { const { cat, currency } = input.dataset; menu[cat].takeawayFee[currency] = parseFloat(input.value); }); alert('Precios de envase actualizados.'); });
-        addProductBtn.addEventListener('click', () => { if(checkPassword()) { const cat = addCategorySelect.value, name = addProductName.value.trim(), cop = parseFloat(addPriceCop.value), usd = parseFloat(addPriceUsd.value); if (name && !isNaN(cop) && !isNaN(usd)) { menu[cat].items.push({ name, cop, usd }); alert(`Producto '${name}' añadido.`); populateAdminForms(); renderCategoryButtons(); addProductName.value = ''; addPriceCop.value = ''; addPriceUsd.value = ''; } else { alert('Complete todos los campos.'); } } });
-        deleteProductBtn.addEventListener('click', () => { if (checkPassword()) { if (confirm('¿Eliminar producto?')) { const [cat, index] = deleteProductSelect.value.split(','); const name = menu[cat].items[index].name; menu[cat].items.splice(index, 1); alert(`Producto '${name}' eliminado.`); populateAdminForms(); renderCategoryButtons(); } } });
-        exportBtn.addEventListener('click', () => { const dataStr = JSON.stringify({ menu, orderHistory }); const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr); const link = document.createElement('a'); link.setAttribute('href', dataUri); link.setAttribute('download', 'datos_restaurante.json'); document.body.appendChild(link); link.click(); document.body.removeChild(link); });
-        importBtn.addEventListener('click', () => importInput.click());
-        importInput.addEventListener('change', e => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = event => { try { const data = JSON.parse(event.target.result); if (data.menu && data.orderHistory) { menu = data.menu; orderHistory = data.orderHistory; alert('Datos importados.'); init(true); } else { alert('JSON no válido.'); } } catch (err) { alert('Error al leer el archivo.'); } }; reader.readAsText(file); e.target.value = ''; });
+        const handleProductSelectionChange = () => {
+            const [cat, index] = editProductSelect.value.split(',');
+            if (!menu[cat] || !menu[cat].items[index]) return;
+            const product = menu[cat].items[index];
+            editProductName.value = product.name;
+            productAvailableCheckbox.checked = product.isAvailable !== false;
+            if (product.variants) {
+                priceEditorNormal.style.display = 'none';
+                variantEditor.style.display = 'block';
+                renderVariantEditor(cat, index);
+            } else {
+                priceEditorNormal.style.display = 'block';
+                variantEditor.style.display = 'none';
+                editPriceCop.value = product.cop;
+                editPriceUsd.value = product.usd;
+            }
+        };
 
-        const init = (isReload = false) => { updateDateTime(); if (!isReload) setInterval(updateDateTime, 1000); orderCounter = orderHistory.length > 0 ? Math.max(...orderHistory.map(o => o.number)) + 1 : 1; orderInfo.number.textContent = orderCounter.toString().padStart(4, '0'); renderCategoryButtons(); renderCurrentOrder(); renderHistory(); switchView('main'); };
+        editProductSelect.addEventListener('change', handleProductSelectionChange);
+        productAvailableCheckbox.addEventListener('change', (e) => {
+            if (confirm('¿Cambiar la disponibilidad de este producto?')) {
+                const [cat, index] = editProductSelect.value.split(',');
+                menu[cat].items[index].isAvailable = e.target.checked;
+                saveState();
+            } else { e.target.checked = !e.target.checked; }
+        });
+
+        saveOrderNumberBtn.addEventListener('click', () => { if (confirm('¿Estás seguro de que quieres cambiar el número de la próxima orden?')) { const newOrderNum = parseInt(getEl('set-order-number-input').value); if (!isNaN(newOrderNum) && newOrderNum > 0) { orderCounter = newOrderNum; orderInfo.number.textContent = orderCounter.toString().padStart(4, '0'); alert(`Próximo número de orden establecido en ${orderCounter}.`); saveState(); } else { alert('Por favor, ingrese un número válido.'); } } });
+        saveNameBtn.addEventListener('click', () => { if (confirm('¿Guardar nuevo nombre para este producto?')) { const [cat, index] = editProductSelect.value.split(','); const newName = editProductName.value.trim(); if (newName) { menu[cat].items[index].name = newName; alert('Nombre actualizado.'); populateAdminForms(); renderCategoryButtons(); saveState(); } else { alert('El nombre no puede estar vacío.'); } } });
+        
+        const renderVariantEditor = (cat, prodIndex) => {
+            variantList.innerHTML = '';
+            const product = menu[cat].items[prodIndex];
+            product.variants.forEach((v, vIndex) => {
+                const el = document.createElement('div');
+                el.className = 'variant-item';
+                el.innerHTML = `<label for="variant-check-${vIndex}">${v.variant}</label>
+                              <input id="variant-check-${vIndex}" type="checkbox" style="width:auto;" data-cat="${cat}" data-prod-index="${prodIndex}" data-variant-index="${vIndex}" ${v.isAvailable !== false ? 'checked' : ''}>
+                              <button class="btn-primary btn-small edit-variant-btn" data-cat="${cat}" data-prod-index="${prodIndex}" data-variant-index="${vIndex}">Editar</button>
+                              <button class="btn-secondary btn-small delete-variant-btn" data-cat="${cat}" data-prod-index="${prodIndex}" data-variant-index="${vIndex}">X</button>`;
+                variantList.appendChild(el);
+            });
+            queryAll('#variant-list input[type="checkbox"]').forEach(cb => cb.addEventListener('change', e => {
+                if (confirm('¿Cambiar la disponibilidad de esta variante?')) {
+                    const { cat, prodIndex, variantIndex } = e.target.dataset;
+                    menu[cat].items[prodIndex].variants[variantIndex].isAvailable = e.target.checked;
+                    saveState();
+                } else { e.target.checked = !e.target.checked; }
+            }));
+            queryAll('.edit-variant-btn').forEach(b => b.addEventListener('click', e => editVariant(e.target.dataset)));
+            queryAll('.delete-variant-btn').forEach(b => b.addEventListener('click', e => deleteVariant(e.target.dataset)));
+        };
+        
+        const renderAdicionalesAdmin = () => {
+            adicionalesEditorList.innerHTML = '';
+            menu.adicionales.forEach((ad, index) => {
+                const el = document.createElement('div');
+                el.className = 'adicional-item';
+                el.innerHTML = `
+                    <label for="adicional-check-${index}">${ad.name} (COP ${ad.cop}/USD ${ad.usd})</label>
+                    <input id="adicional-check-${index}" type="checkbox" style="width:auto;" data-index="${index}" ${ad.isAvailable !== false ? 'checked' : ''}>
+                    <button class="btn-primary btn-small edit-adicional-btn" data-index="${index}">Editar</button>
+                    <button class="btn-secondary btn-small delete-adicional-btn" data-index="${index}">X</button>
+                `;
+                adicionalesEditorList.appendChild(el);
+            });
+            queryAll('#adicionales-editor-list input[type="checkbox"]').forEach(cb => cb.addEventListener('change', e => {
+                if (confirm('¿Cambiar la disponibilidad de este adicional?')) {
+                    menu.adicionales[e.target.dataset.index].isAvailable = e.target.checked;
+                    saveState();
+                } else { e.target.checked = !e.target.checked; }
+            }));
+            queryAll('.edit-adicional-btn').forEach(b => b.addEventListener('click', e => editAdicional(e.target.dataset.index)));
+            queryAll('.delete-adicional-btn').forEach(b => b.addEventListener('click', e => deleteAdicional(e.target.dataset.index)));
+        };
+
+        const editAdicional = (index) => {
+            const ad = menu.adicionales[index];
+            const newName = prompt('Nuevo nombre del adicional:', ad.name);
+            if (newName === null) return;
+            const newCop = prompt('Nuevo precio (COP):', ad.cop);
+            if (newCop === null) return;
+            const newUsd = prompt('Nuevo precio (USD):', ad.usd);
+            if (newUsd === null) return;
+
+            if (newName.trim() && !isNaN(parseFloat(newCop)) && !isNaN(parseFloat(newUsd))) {
+                if(confirm('¿Guardar estos cambios en el adicional?')) {
+                    ad.name = newName.trim();
+                    ad.cop = parseFloat(newCop);
+                    ad.usd = parseFloat(newUsd);
+                    renderAdicionalesAdmin();
+                    saveState();
+                }
+            } else { alert('Datos inválidos.'); }
+        };
+
+        const deleteAdicional = (index) => {
+            const adName = menu.adicionales[index].name;
+            if (confirm(`¿Estás seguro de que quieres eliminar el adicional "${adName}"?`)) {
+                menu.adicionales.splice(index, 1);
+                renderAdicionalesAdmin();
+                saveState();
+            }
+        };
+
+        getEl('add-adicional-btn').addEventListener('click', () => {
+            if (confirm('¿Añadir nuevo adicional?')) {
+                const name = getEl('add-adicional-name').value.trim();
+                const cop = parseFloat(getEl('add-adicional-cop').value);
+                const usd = parseFloat(getEl('add-adicional-usd').value);
+                if (name && !isNaN(cop) && !isNaN(usd)) {
+                    menu.adicionales.push({ name, cop, usd, isAvailable: true });
+                    renderAdicionalesAdmin();
+                    getEl('add-adicional-name').value = '';
+                    getEl('add-adicional-cop').value = '';
+                    getEl('add-adicional-usd').value = '';
+                    saveState();
+                } else {
+                    alert('Por favor, complete todos los campos del adicional con valores válidos.');
+                }
+            }
+        });
+
+
+        const editVariant = ({ cat, prodIndex, variantIndex }) => {
+            const variant = menu[cat].items[prodIndex].variants[variantIndex];
+            const newName = prompt('Nuevo nombre de la variante:', variant.variant);
+            if (newName === null) return;
+            const newCop = prompt('Nuevo precio (COP):', variant.cop);
+            if (newCop === null) return;
+            const newUsd = prompt('Nuevo precio (USD):', variant.usd);
+            if (newUsd === null) return;
+
+            if (newName.trim() && !isNaN(parseFloat(newCop)) && !isNaN(parseFloat(newUsd))) {
+                if(confirm('¿Guardar estos cambios en la variante?')) {
+                    variant.variant = newName.trim();
+                    variant.cop = parseFloat(newCop);
+                    variant.usd = parseFloat(newUsd);
+                    renderVariantEditor(cat, prodIndex);
+                    saveState();
+                }
+            } else { alert('Datos inválidos.'); }
+        };
+
+        const deleteVariant = ({ cat, prodIndex, variantIndex }) => { const variantName = menu[cat].items[prodIndex].variants[variantIndex].variant; if (confirm(`¿Estás seguro de que quieres eliminar la variante "${variantName}"?`)) { menu[cat].items[prodIndex].variants.splice(variantIndex, 1); renderVariantEditor(cat, prodIndex); saveState(); } };
+        getEl('add-variant-btn').addEventListener('click', () => { if (confirm('¿Añadir nueva variante?')) { const [cat, prodIndex] = editProductSelect.value.split(','); const name = getEl('add-variant-name').value.trim(), cop = parseFloat(getEl('add-variant-cop').value), usd = parseFloat(getEl('add-variant-usd').value); if (name && !isNaN(cop) && !isNaN(usd)) { menu[cat].items[prodIndex].variants.push({ variant: name, cop, usd, isAvailable: true }); renderVariantEditor(cat, prodIndex); getEl('add-variant-name').value = ''; getEl('add-variant-cop').value = ''; getEl('add-variant-usd').value = ''; saveState(); } } });
+        savePriceBtn.addEventListener('click', () => { if (confirm('¿Guardar los nuevos precios?')) { const [cat, index] = editProductSelect.value.split(','); const newCop = parseFloat(editPriceCop.value), newUsd = parseFloat(editPriceUsd.value); if (!isNaN(newCop) && !isNaN(newUsd)) { menu[cat].items[index].cop = newCop; menu[cat].items[index].usd = newUsd; alert('Precio actualizado.'); editPriceCop.value = ''; editPriceUsd.value = ''; saveState(); } else { alert('Precios inválidos.'); } } });
+        saveTakeawayFeesBtn.addEventListener('click', () => { if (confirm('¿Guardar los precios de envase?')) { queryAll('#takeaway-fee-editor .fee-item').forEach(item => { const cat = item.querySelector('input[data-cat]').dataset.cat; const copInput = item.querySelector('input[data-currency="cop"]'); const usdInput = item.querySelector('input[data-currency="usd"]'); if (menu[cat]) { if (!menu[cat].takeawayFee) menu[cat].takeawayFee = {}; menu[cat].takeawayFee.cop = parseFloat(copInput.value) || 0; menu[cat].takeawayFee.usd = parseFloat(usdInput.value) || 0; } }); alert('Precios de envase actualizados.'); saveState(); } });
+        addProductBtn.addEventListener('click', () => { if(confirm('¿Añadir este nuevo producto?')) { const cat = addCategorySelect.value, name = addProductName.value.trim(), cop = parseFloat(addPriceCop.value), usd = parseFloat(addPriceUsd.value); if (name && !isNaN(cop) && !isNaN(usd)) { menu[cat].items.push({ name, cop, usd, isAvailable: true }); alert(`Producto '${name}' añadido.`); populateAdminForms(); renderCategoryButtons(); addProductName.value = ''; addPriceCop.value = ''; addPriceUsd.value = ''; saveState(); } else { alert('Complete todos los campos.'); } } });
+        deleteProductBtn.addEventListener('click', () => { const productName = deleteProductSelect.options[deleteProductSelect.selectedIndex].text; if (confirm(`¿Estás seguro de que quieres eliminar el producto "${productName}"?`)) { const [cat, index] = deleteProductSelect.value.split(','); menu[cat].items.splice(index, 1); alert(`Producto '${productName}' eliminado.`); populateAdminForms(); renderCategoryButtons(); saveState(); } });
+        saveExchangeRateBtn.addEventListener('click', () => { if (confirm('¿Guardar la nueva tasa de cambio?')) { const newRate = parseFloat(exchangeRateInput.value); if (!isNaN(newRate) && newRate > 0) { exchangeRate = newRate; alert('Tasa de cambio actualizada.'); saveState(); } else { alert('Por favor, ingrese un número válido.'); } } });
+        
+        importBtn.addEventListener('click', () => importInput.click());
+        importInput.addEventListener('change', e => {
+            const file = e.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = event => {
+                try {
+                    const data = JSON.parse(event.target.result);
+                    if (data.menu && typeof data.orderHistory !== 'undefined' && typeof data.orderCounter !== 'undefined') {
+                        menu = data.menu;
+                        orderHistory = data.orderHistory.map(o => ({ ...o, datetime: new Date(o.datetime) }));
+                        orderCounter = data.orderCounter;
+                        exchangeRate = data.exchangeRate || 4000;
+                        saveState(); 
+                        alert('Datos importados y sincronizados con éxito. La página se recargará.');
+                        setTimeout(() => location.reload(), 1000);
+                    } else { alert('Archivo JSON no válido o incompleto.'); }
+                } catch (err) { alert('Error al leer el archivo.'); }
+            };
+            reader.readAsText(file); e.target.value = '';
+        });
+        
+        newOrderBtn.addEventListener('click', startNewOrder);
+        deliveryCheckbox.addEventListener('change', (e) => {
+            deliveryInputs.style.display = e.target.checked ? 'grid' : 'none';
+        });
+
+        const init = () => {
+            loadState();
+        };
+
         init();
     });
     </script>
