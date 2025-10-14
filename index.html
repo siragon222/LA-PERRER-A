@@ -396,18 +396,25 @@
             emptyOrderMsg.style.display = 'none';
             
             const deLaCalleCount = currentOrder.filter(item => item.name === SPECIAL_PRODUCT_NAME && item.domicilio).length;
-            const deLaCalleFeeCount = Math.ceil(deLaCalleCount / 2);
-            let deLaCalleFeeApplied = 0;
+            const numPairs = Math.floor(deLaCalleCount / 2);
+            const numSingles = deLaCalleCount % 2;
+            let pairsFeeApplied = 0;
+            let singlesFeeApplied = 0;
 
             currentOrder.forEach((item, index) => {
                 let feeHtml = '';
                 const feeExempt = ['Refrescos', 'Agua Mineral', 'Cervezas'].includes(item.name.split(' (')[0]);
+
                 if (item.domicilio && item.category && menu[item.category] && menu[item.category].takeawayFee && !feeExempt) {
                     const fee = menu[item.category].takeawayFee;
                     if (item.name === SPECIAL_PRODUCT_NAME) {
-                        if (deLaCalleFeeApplied < deLaCalleFeeCount) {
-                            feeHtml = `<div class="takeaway-fee">+ Envase</div>`;
-                            deLaCalleFeeApplied++;
+                        // This logic is purely visual for the current order screen
+                        if (pairsFeeApplied < numPairs) {
+                            feeHtml = `<div class="takeaway-fee">+ Envase (x2)</div>`;
+                            pairsFeeApplied++; 
+                        } else if (singlesFeeApplied < numSingles) {
+                            feeHtml = `<div class="takeaway-fee">+ Envase (x1)</div>`;
+                            singlesFeeApplied++;
                         }
                     } else {
                         feeHtml = `<div class="takeaway-fee">+ Envase</div>`;
@@ -713,7 +720,7 @@
                     if (item.domicilio && !feeExempt) {
                         let fee = null;
                         if (item.name === SPECIAL_PRODUCT_NAME) {
-                            if (deLaCalleFeesApplied < deLaCalleFeeCount && menu.perros && menu.perros.takeawayFee) {
+                             if (deLaCalleFeesApplied < deLaCalleFeeCount && menu.perros && menu.perros.takeawayFee) {
                                 fee = menu.perros.takeawayFee;
                                 deLaCalleFeesApplied++;
                             }
@@ -757,8 +764,7 @@
                 if (deLaCalleCount > 0 && menu.perros && menu.perros.takeawayFee) {
                     const numPairs = Math.floor(deLaCalleCount / 2);
                     const numSingles = deLaCalleCount % 2;
-                    const fee = menu.perros.takeawayFee; // Assuming the base fee is for single items
-                    takeawaySummary.perros.count += numPairs + numSingles; // Count total packages
+                    takeawaySummary.perros.count += numPairs + numSingles; 
                     takeawaySummary.perros.totalCop += (numPairs * 1500) + (numSingles * 1000);
                     takeawaySummary.perros.totalUsd += ((numPairs * 1500) + (numSingles * 1000)) / exchangeRate;
                 }
@@ -816,8 +822,8 @@
             doc.line(14, 70, 196, 70);
 
             const tableRows = [];
-            const deLaCalleTakeawayItems = order.items.filter(item => item.name === SPECIAL_PRODUCT_NAME && item.domicilio);
-            const deLaCalleCount = deLaCalleTakeawayItems.length;
+            const specialItemsForTakeaway = order.items.filter(item => item.name === SPECIAL_PRODUCT_NAME && item.domicilio);
+            let specialItemsProcessed = 0;
 
             order.items.forEach(item => {
                 let itemTotalCop = item.cop;
@@ -831,10 +837,23 @@
                 }
                 
                 const feeExempt = ['Refrescos', 'Agua Mineral', 'Cervezas'].includes(item.name.split(' (')[0]);
-                if (item.name !== SPECIAL_PRODUCT_NAME && item.domicilio && !feeExempt && item.category && menu[item.category] && menu[item.category].takeawayFee) {
-                    const fee = menu[item.category].takeawayFee;
-                    itemTotalCop += fee.cop;
-                    descriptionParts.push(`  + Cargo Envase (COP ${fee.cop.toLocaleString()})`);
+
+                if (item.domicilio && !feeExempt) {
+                    if (item.name === SPECIAL_PRODUCT_NAME) {
+                        specialItemsProcessed++;
+                        const isPairStart = specialItemsProcessed % 2 === 1 && specialItemsProcessed < specialItemsForTakeaway.length;
+                        if (isPairStart) {
+                            itemTotalCop += 1500;
+                            descriptionParts.push(`  + Cargo Envase (x2) (COP 1,500)`);
+                        } else if (specialItemsProcessed % 2 === 1 && specialItemsProcessed === specialItemsForTakeaway.length) {
+                            itemTotalCop += 1000;
+                            descriptionParts.push(`  + Cargo Envase (x1) (COP 1,000)`);
+                        }
+                    } else if (item.category && menu[item.category] && menu[item.category].takeawayFee) {
+                        const fee = menu[item.category].takeawayFee;
+                        itemTotalCop += fee.cop;
+                        descriptionParts.push(`  + Cargo Envase (COP ${fee.cop.toLocaleString()})`);
+                    }
                 }
                 
                 if (item.observation) {
@@ -842,15 +861,14 @@
                 }
 
                 const finalDescription = descriptionParts.join('\n');
-                tableRows.push(['1', finalDescription, `COP ${item.cop.toLocaleString()}`, `COP ${itemTotalCop.toLocaleString()}`]);
+                
+                // Only add the row if it's not a second item of a pair for the special product
+                const isSecondOfPair = item.name === SPECIAL_PRODUCT_NAME && item.domicilio && specialItemsProcessed % 2 === 0;
+                if (!isSecondOfPair) {
+                    const quantity = isPairStart ? 2 : 1;
+                    tableRows.push([quantity.toString(), finalDescription, `COP ${item.cop.toLocaleString()}`, `COP ${itemTotalCop.toLocaleString()}`]);
+                }
             });
-
-            if (deLaCalleCount > 0) {
-                const numPairs = Math.floor(deLaCalleCount / 2);
-                const numSingles = deLaCalleCount % 2;
-                const specialFeeCop = (numPairs * 1500) + (numSingles * 1000);
-                tableRows.push(['', `Cargo Envase (${SPECIAL_PRODUCT_NAME})`, '', `COP ${specialFeeCop.toLocaleString()}`]);
-            }
 
             if (order.isDelivery && order.deliveryCost > 0) {
                 tableRows.push(['', 'Costo Domicilio', '', `COP ${order.deliveryCost.toLocaleString()}`]);
@@ -1048,18 +1066,6 @@
         deleteProductBtn.addEventListener('click', () => { const productName = deleteProductSelect.options[deleteProductSelect.selectedIndex].text; if (confirm(`¿Estás seguro de que quieres eliminar el producto "${productName}"?`)) { const [cat, index] = deleteProductSelect.value.split(','); menu[cat].items.splice(index, 1); alert(`Producto '${productName}' eliminado.`); saveState(); } });
         saveExchangeRateBtn.addEventListener('click', () => { if (confirm('¿Guardar la nueva tasa de cambio?')) { const newRate = parseFloat(exchangeRateInput.value); if (!isNaN(newRate) && newRate > 0) { exchangeRate = newRate; alert('Tasa de cambio actualizada.'); saveState(); } else { alert('Por favor, ingrese un número válido.'); } } });
         
-        exportBtn.addEventListener('click', () => {
-            const stateToExport = { menu, orderHistory, orderCounter, exchangeRate };
-            const dataStr = JSON.stringify(stateToExport, null, 2);
-            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-            const link = document.createElement('a');
-            link.setAttribute('href', dataUri);
-            link.setAttribute('download', 'datos_restaurante.json');
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        });
-
         importBtn.addEventListener('click', () => importInput.click());
         importInput.addEventListener('change', e => {
             const file = e.target.files[0]; if (!file) return;
@@ -1073,7 +1079,7 @@
                             orderHistory = data.orderHistory.map(o => ({ ...o, datetime: new Date(o.datetime) }));
                             orderCounter = data.orderCounter;
                             exchangeRate = data.exchangeRate || 4000;
-                            saveState();
+                            saveState(); 
                             alert('Datos importados y sincronizados con éxito.');
                         } else { alert('Archivo JSON no válido o incompleto.'); }
                     }
@@ -1097,7 +1103,7 @@
 
 </body>
 </html>
-            loadState();
+State();
         };
 
         init();
